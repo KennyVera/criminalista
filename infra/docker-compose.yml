@@ -1,0 +1,105 @@
+# CrimeTrack Analytics Corp — Infraestructura local
+# Servicios: MinIO (S3) + PocketBase + Redis + Celery worker
+#
+# Uso (desde esta carpeta infra/):
+#   docker compose up -d
+#   docker compose --profile workers up -d   # incluye Celery
+#   docker compose ps
+#   docker compose logs -f celery-worker
+
+name: crimetrack
+
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: crimetrack-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_change_me}
+    volumes:
+      - minio_data:/data
+    networks:
+      - crimetrack_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: crimetrack-pocketbase
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - pocketbase_data:/pb_data
+    networks:
+      - crimetrack_net
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  redis:
+    image: redis:alpine
+    container_name: crimetrack-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - crimetrack_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  celery-worker:
+    profiles: ["workers"]
+    build:
+      context: ../backend_django
+      dockerfile: Dockerfile.worker
+    container_name: crimetrack-celery
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: crimetrack.settings
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_CACHE_URL: redis://redis:6379/2
+      POCKETBASE_URL: http://pocketbase:8090
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_change_me}
+      MINIO_BUCKET: ${MINIO_BUCKET:-crimetrack-evidence}
+      POCKETBASE_ADMIN_EMAIL: ${POCKETBASE_ADMIN_EMAIL:-admin@crimetrack.local}
+      POCKETBASE_ADMIN_PASSWORD: ${POCKETBASE_ADMIN_PASSWORD:-}
+    volumes:
+      - ../backend_django:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      pocketbase:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      - crimetrack_net
+    command: celery -A crimetrack worker -l info --concurrency=2
+
+networks:
+  crimetrack_net:
+    driver: bridge
+    name: crimetrack_net
+
+volumes:
+  minio_data:
+    name: crimetrack_minio_data
+  pocketbase_data:
+    name: crimetrack_pocketbase_data

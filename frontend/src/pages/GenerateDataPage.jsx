@@ -1,0 +1,528 @@
+import { useRef, useState } from 'react'
+import {
+  Sparkles,
+  Database,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Layers,
+} from 'lucide-react'
+import { api } from '../api/client'
+import { Button, Card, Badge } from '../components/ui'
+
+const MAX_TOTAL = 500_000
+const POLL_MS = 1200
+const PREVIEW_MAX = 8
+/** Hasta este total: API directa por lotes. Por encima: Celery (32 hilos). */
+const DIRECT_MAX = 2_000
+const BATCH_SIZE = 2_000
+const INSERT_WORKERS = 32
+const CELERY_PENDING_MAX_POLLS = 6
+/** Requisito académico: +100k históricos hacia ~300k */
+const REALISTIC_100K = 100_000
+
+const PHASE = {
+  form: 'form',
+  generating: 'generating',
+  preview: 'preview',
+  etl: 'etl',
+  etlDone: 'etlDone',
+  error: 'error',
+}
+
+function ProgressBar({ percent, label }) {
+  return (
+    <div>
+      {label && (
+        <div className="mb-2 flex justify-between text-sm">
+          <span className="font-medium text-slate-700">{label}</span>
+          <span className="text-slate-500">{percent}%</span>
+        </div>
+      )}
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-600 transition-all duration-300"
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+export default function GenerateDataPage() {
+  const [count, setCount] = useState(50)
+  const [phase, setPhase] = useState(PHASE.form)
+  const [progress, setProgress] = useState({
+    done: 0,
+    total: 0,
+    created: 0,
+    errors: 0,
+    percent: 0,
+  })
+  const [previewRows, setPreviewRows] = useState([])
+  const [genSummary, setGenSummary] = useState(null)
+  const [etlResult, setEtlResult] = useState(null)
+  const [errorMsg, setErrorMsg] = useState(null)
+  const [statusHint, setStatusHint] = useState(null)
+  const [etlProgress, setEtlProgress] = useState({ percent: 0, message: '' })
+  const cancelRef = useRef(false)
+
+  const reset = () => {
+    setPhase(PHASE.form)
+    setProgress({ done: 0, total: 0, created: 0, errors: 0, percent: 0 })
+    setPreviewRows([])
+    setGenSummary(null)
+    setEtlResult(null)
+    setErrorMsg(null)
+    setStatusHint(null)
+    setEtlProgress({ percent: 0, message: '' })
+    cancelRef.current = false
+  }
+
+  const finishGeneration = (result, total) => {
+    const samples = result.samples || []
+    setPreviewRows(samples.slice(-PREVIEW_MAX))
+    setGenSummary({
+      created: result.raw?.created ?? result.inserted_facts ?? 0,
+      errors: result.raw?.errors ?? 0,
+      total,
+    })
+    setPhase(PHASE.preview)
+  }
+
+  const generateDirectBatches = async (total, { realistic = false } = {}) => {
+    let done = 0
+    let created = 0
+    let errors = 0
+    const samples = []
+    const batchFn = realistic
+      ? api.generateFakeDataRealisticBatch
+      : api.generateFakeDataBatch
+
+    while (done < total) {
+      if (cancelRef.current) return
+      const chunk = Math.min(BATCH_SIZE, total - done)
+      setStatusHint(
+        realistic
+          ? `Lote histórico ${Math.floor(done / BATCH_SIZE) + 1} (2001–2026)...`
+          : `Insertando lote ${Math.floor(done / BATCH_SIZE) + 1}...`
+      )
+      const res = await batchFn(chunk, INSERT_WORKERS)
+      const batchCreated = res.raw?.created ?? res.inserted_facts ?? 0
+      const batchErrors = res.raw?.errors ?? 0
+      created += batchCreated
+      errors += batchErrors
+      done += chunk
+      for (const s of res.samples || []) {
+        if (samples.length < PREVIEW_MAX) samples.push(s)
+      }
+      const percent = Math.round((100 * done) / total)
+      setProgress({
+        done,
+        total,
+        created,
+        errors,
+        percent,
+      })
+      setPreviewRows(samples.slice(-PREVIEW_MAX))
+    }
+
+    finishGeneration(
+      {
+        samples,
+        raw: { created, errors },
+        inserted_facts: created,
+      },
+      total
+    )
+  }
+
+  const pollTask = (fetchStatus, onUpdate, onDone) =>
+    new Promise((resolve, reject) => {
+      const tick = async () => {
+        if (cancelRef.current) {
+          resolve(null)
+          return
+        }
+        try {
+          const st = await fetchStatus()
+          onUpdate(st)
+          if (st.status === 'completed') {
+            onDone(st)
+            resolve(st)
+            return
+          }
+          if (st.status === 'failed') {
+            reject(new Error(st.error || st.result?.error || 'Tarea fallida'))
+            return
+          }
+        } catch (err) {
+          reject(err)
+          return
+        }
+        setTimeout(tick, POLL_MS)
+      }
+      tick()
+    })
+
+  const handleRealistic100k = async () => {
+    const total = REALISTIC_100K
+    cancelRef.current = false
+    setPhase(PHASE.generating)
+    setErrorMsg(null)
+    setStatusHint('Distribuyendo 100.000 hechos entre 2001 y 2026...')
+    setPreviewRows([])
+    setGenSummary(null)
+    setEtlResult(null)
+    setProgress({ done: 0, total, created: 0, errors: 0, percent: 0 })
+
+    try {
+      const queued = await api.generateFakeDataAsync(total, true)
+      await pollTask(
+        () => api.generateFakeDataStatus(queued.task_id),
+        (st) => {
+          setProgress({
+            done: st.done ?? 0,
+            total: st.total ?? total,
+            created: st.created ?? 0,
+            errors: st.errors ?? 0,
+            percent: st.percent ?? 0,
+          })
+          if (st.last_sample) {
+            setPreviewRows((prev) => [...prev, st.last_sample].slice(-PREVIEW_MAX))
+          }
+        },
+        (st) => {
+          finishGeneration(st.result || st, total)
+        }
+      )
+    } catch {
+      try {
+        await generateDirectBatches(total, { realistic: true })
+      } catch (err) {
+        setErrorMsg(err.message)
+        setPhase(PHASE.error)
+        return
+      }
+    }
+  }
+
+  const handleGenerate = async () => {
+    const total = Math.min(MAX_TOTAL, Math.max(1, Number(count) || 0))
+    cancelRef.current = false
+    setPhase(PHASE.generating)
+    setErrorMsg(null)
+    setStatusHint(null)
+    setPreviewRows([])
+    setGenSummary(null)
+    setEtlResult(null)
+    setProgress({ done: 0, total, created: 0, errors: 0, percent: 0 })
+
+    try {
+      if (total <= DIRECT_MAX) {
+        setStatusHint(`Insercion paralela (${INSERT_WORKERS} workers por lote).`)
+        await generateDirectBatches(total)
+        if (cancelRef.current) reset()
+        return
+      }
+
+      const queued = await api.generateFakeDataAsync(total)
+      let pendingPolls = 0
+      await pollTask(
+        () => api.generateFakeDataStatus(queued.task_id),
+        (st) => {
+          if (st.status === 'pending') {
+            pendingPolls += 1
+            setStatusHint(
+              pendingPolls >= CELERY_PENDING_MAX_POLLS
+                ? 'Celery no responde; cambiando a modo directo por lotes...'
+                : 'En cola (Celery). Si tarda, se usara modo directo...'
+            )
+            if (pendingPolls >= CELERY_PENDING_MAX_POLLS) {
+              throw new Error('__FALLBACK_DIRECT__')
+            }
+            return
+          }
+          pendingPolls = 0
+          setStatusHint(null)
+          setProgress({
+            done: st.done ?? 0,
+            total: st.total ?? total,
+            created: st.created ?? 0,
+            errors: st.errors ?? 0,
+            percent: st.percent ?? 0,
+          })
+          if (st.last_sample) {
+            setPreviewRows((prev) => {
+              const next = [...prev, st.last_sample]
+              return next.slice(-PREVIEW_MAX)
+            })
+          }
+        },
+        (st) => {
+          const result = st.result || st
+          finishGeneration(result, total)
+        }
+      )
+      if (cancelRef.current) reset()
+    } catch (err) {
+      if (err.message === '__FALLBACK_DIRECT__') {
+        try {
+          await generateDirectBatches(total)
+          if (cancelRef.current) reset()
+          return
+        } catch (inner) {
+          setErrorMsg(inner.message)
+          setPhase(PHASE.error)
+          return
+        }
+      }
+      setErrorMsg(err.message)
+      setPhase(PHASE.error)
+    }
+  }
+
+  const handleFeedDimensions = async () => {
+    setPhase(PHASE.etl)
+    setErrorMsg(null)
+    setEtlProgress({ percent: 0, message: 'Encolando ETL...' })
+    try {
+      const queued = await api.runEtlToMinioAsync()
+      await pollTask(
+        () => api.etlTaskStatus(queued.task_id),
+        (st) => {
+          setEtlProgress({
+            percent: st.percent ?? (st.status === 'completed' ? 100 : 0),
+            message: st.message || st.phase || 'Procesando...',
+          })
+        },
+        (st) => {
+          setEtlResult(st.result || st)
+          setEtlProgress({ percent: 100, message: 'Completado' })
+          setPhase(PHASE.etlDone)
+        }
+      )
+    } catch (err) {
+      setErrorMsg(err.message)
+      setPhase(PHASE.preview)
+    }
+  }
+
+  return (
+    <section className="mx-auto max-w-4xl space-y-6">
+      <header>
+        <h2 className="text-xl font-bold text-slate-900">Generar datos ficticios</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Faker inserta registros en <strong>crimes_220k</strong> (PocketBase). Opcionalmente
+          actualiza dimensiones y hechos en MinIO.
+        </p>
+      </header>
+
+      {(phase === PHASE.form || phase === PHASE.error) && (
+        <Card>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleGenerate()
+            }}
+            className="space-y-4"
+          >
+            <label className="block max-w-xs">
+              <span className="mb-1 block text-sm font-medium text-slate-700">
+                Cantidad de registros
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={MAX_TOTAL}
+                value={count}
+                onChange={(e) => setCount(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                Hasta {DIRECT_MAX.toLocaleString('es-CO')}: lotes de {BATCH_SIZE} con {INSERT_WORKERS}{' '}
+                workers. 100k+: Celery (recomendado: worker activo).
+              </span>
+            </label>
+
+            {phase === PHASE.error && errorMsg && (
+              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <p>{errorMsg}</p>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <Button type="submit">
+                <Sparkles className="h-4 w-4" />
+                Generar registros
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={(e) => {
+                  e.preventDefault()
+                  handleRealistic100k()
+                }}
+              >
+                <Layers className="h-4 w-4" />
+                +100k históricos (~300k)
+              </Button>
+            </div>
+            <p className="text-xs text-slate-500">
+              El botón histórico reparte fechas entre 2001 y 2026 para que las tendencias
+              delictivas del dashboard se vean continuas. Después ejecuta ETL a MinIO.
+            </p>
+          </form>
+        </Card>
+      )}
+
+      {phase === PHASE.generating && (
+        <Card>
+          <div className="mb-4 flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+            <p className="font-medium text-slate-800">Generando datos con Faker...</p>
+          </div>
+          <ProgressBar
+            percent={progress.percent}
+            label={`${progress.done} / ${progress.total} registros`}
+          />
+          <p className="mt-3 text-sm text-emerald-600">Creados: {progress.created}</p>
+          {statusHint && (
+            <p className="mt-2 text-sm text-slate-500">{statusHint}</p>
+          )}
+          <Button
+            variant="secondary"
+            className="mt-4"
+            type="button"
+            onClick={() => {
+              cancelRef.current = true
+            }}
+          >
+            Cancelar
+          </Button>
+        </Card>
+      )}
+
+      {(phase === PHASE.preview || phase === PHASE.etl || phase === PHASE.etlDone) && (
+        <>
+          <Card>
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <p className="font-medium text-slate-900">
+                {genSummary?.created} registros insertados en crimes_220k
+              </p>
+              <Badge tone="green">PocketBase</Badge>
+            </div>
+
+            <h3 className="mb-3 text-sm font-semibold text-slate-700">
+              Vista previa (ultimos {previewRows.length} generados)
+            </h3>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Caso</th>
+                    <th className="px-3 py-2">Tipo</th>
+                    <th className="px-3 py-2">Bloque</th>
+                    <th className="px-3 py-2">Distrito</th>
+                    <th className="px-3 py-2">Fecha</th>
+                    <th className="px-3 py-2">Arresto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.map((row) => (
+                    <tr key={row.id || row.pb_id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-medium">{row.case_number}</td>
+                      <td className="px-3 py-2">{row.primary_type}</td>
+                      <td className="max-w-[160px] truncate px-3 py-2">{row.block}</td>
+                      <td className="px-3 py-2">{row.district}</td>
+                      <td className="max-w-[140px] truncate px-3 py-2 text-xs">{row.date}</td>
+                      <td className="px-3 py-2">{row.arrest}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {errorMsg && phase === PHASE.preview && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <p>{errorMsg}</p>
+            </div>
+          )}
+
+          {phase === PHASE.preview && (
+            <Card className="border-brand-200 bg-brand-50/30">
+              <div className="flex items-start gap-3">
+                <Layers className="h-6 w-6 shrink-0 text-brand-600" />
+                <div className="flex-1">
+                  <p className="font-semibold text-slate-900">
+                    Deseas alimentar tus tablas de Dimensiones?
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Si eliges Si, se ejecuta el ETL hacia MinIO (dimensiones + fact_crimes).
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Button type="button" onClick={handleFeedDimensions}>
+                      <Database className="h-4 w-4" />
+                      Si, actualizar MinIO
+                    </Button>
+                    <Button variant="secondary" type="button" onClick={reset}>
+                      No, solo raw en PocketBase
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {phase === PHASE.etl && (
+            <Card>
+              <div className="mb-4 flex items-center gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
+                <div>
+                  <p className="font-medium text-slate-900">Alimentando dimensiones en MinIO...</p>
+                  <p className="text-sm text-slate-500">
+                    {etlProgress.message ||
+                      'Extraccion paralela, transformacion vectorizada y subida Parquet.'}
+                  </p>
+                </div>
+              </div>
+              <ProgressBar
+                percent={etlProgress.percent}
+                label="Progreso ETL"
+              />
+            </Card>
+          )}
+
+          {phase === PHASE.etlDone && etlResult && (
+            <Card className="border-emerald-200 bg-emerald-50/50">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                <div>
+                  <p className="font-semibold text-emerald-900">MinIO actualizado</p>
+                  <p className="mt-1 text-sm text-emerald-800">{etlResult.message}</p>
+                  {etlResult.collections && (
+                    <ul className="mt-3 grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
+                      {Object.entries(etlResult.collections).map(([name, n]) => (
+                        <li key={name}>
+                          <span className="font-medium">{name}:</span>{' '}
+                          {Number(n).toLocaleString('es-CO')} filas
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <Button variant="secondary" className="mt-4" type="button" onClick={reset}>
+                    Generar mas registros
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
