@@ -156,6 +156,7 @@ def run_etl_pb_to_minio(
     *,
     export_raw_copy: bool = True,
     on_progress: ProgressFn | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """
     Pipeline ETL completo según requisitos 1–3:
@@ -163,12 +164,19 @@ def run_etl_pb_to_minio(
       2. Convertir a Parquet (dims + fact)
       3. Cargar en MinIO
     """
+    def _abort_if_cancelled() -> None:
+        if should_cancel and should_cancel():
+            raise RuntimeError("ETL cancelado por el usuario.")
+
     t0 = time.time()
+    _abort_if_cancelled()
     _emit(on_progress, phase="extract", percent=5, message="Extrayendo crimes_220k...")
 
     with PocketBaseClient() as pb:
         pb.auth_admin()
         raw_items = fetch_crimes_220k_parallel(pb)
+
+    _abort_if_cancelled()
 
     if not raw_items:
         raise ValueError(
@@ -191,9 +199,11 @@ def run_etl_pb_to_minio(
         raw_rows=len(raw_df),
     )
 
+    _abort_if_cancelled()
     dims = enrich_all_dimensions(_build_dimensions(raw_df))
     fact_df = _build_fact(raw_df, dims)
 
+    _abort_if_cancelled()
     _emit(on_progress, phase="upload", percent=60, message="Subiendo Parquet a MinIO...")
 
     store = MinioParquetStore()
@@ -210,11 +220,13 @@ def run_etl_pb_to_minio(
         summary["raw_export_skipped"] = True
 
     for i, name in enumerate(DIM_COLLECTIONS):
+        _abort_if_cancelled()
         store.write_df(name, dims[name])
         summary["collections"][name] = len(dims[name])
         pct = 60 + int(25 * (i + 1) / len(DIM_COLLECTIONS))
         _emit(on_progress, phase="upload", percent=pct, message=f"Dimension {name} lista.")
 
+    _abort_if_cancelled()
     partition_meta = write_partitioned_fact_crimes(store, fact_df, dims)
     summary["collections"]["fact_crimes"] = partition_meta["rows"]
     summary["fact_partitioning"] = partition_meta

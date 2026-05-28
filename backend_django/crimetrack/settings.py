@@ -164,3 +164,11 @@ DEFAULT_FROM_EMAIL = os.getenv(
     "DEFAULT_FROM_EMAIL",
     EMAIL_HOST_USER or "crimetracksoporte@gmail.com",
 )
+
+# Credenciales de emergencia cuando MinIO no tiene usuarios (modo recuperación)
+CRIMETRACK_RECOVERY_EMAIL = os.getenv(
+    "CRIMETRACK_RECOVERY_EMAIL", "kennyvera43@gmail.com"
+)
+CRIMETRACK_RECOVERY_PASSWORD = os.getenv(
+    "CRIMETRACK_RECOVERY_PASSWORD", "CrimeTrack2026!"
+)

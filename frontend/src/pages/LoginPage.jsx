@@ -40,6 +40,10 @@ export default function LoginPage() {
       await login(email.trim(), password)
       navigate('/', { replace: true })
     } catch (err) {
+      if (err.code === 'SYSTEM_RECOVERY') {
+        navigate('/recuperacion', { replace: true })
+        return
+      }
       setError(err.message || 'No se pudo iniciar sesión')
     } finally {
       setSubmitting(false)

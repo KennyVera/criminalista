@@ -32,10 +32,46 @@ export const adminApi = {
     api.request(`${B}/parametros/`, { method: 'POST', body: JSON.stringify(body) }),
   updateParametro: (id, body) =>
     api.request(`${B}/parametros/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),
-  respaldos: () => api.request(`${B}/respaldos/`),
-  runRespaldo: () => api.request(`${B}/respaldos/`, { method: 'POST', body: '{}' }),
+  respaldos: (ejecutarPendientes = false) =>
+    api.request(`${B}/respaldos/${ejecutarPendientes ? '?ejecutar_pendientes=1' : ''}`),
+  respaldosHistorial: (limit = 50) =>
+    api.request(`${B}/respaldos/historial/?limit=${limit}`),
+  deleteRespaldoHistorial: (historialId) =>
+    api.request(`${B}/respaldos/historial/${historialId}/`, { method: 'DELETE' }),
+  deleteRespaldoHistorialBulk: (ids) =>
+    api.request(`${B}/respaldos/historial/`, {
+      method: 'POST',
+      body: JSON.stringify({ accion: 'eliminar', ids }),
+    }),
+  respaldosAlertas: (hours = 72) =>
+    api.request(`${B}/respaldos/alertas/?hours=${hours}`),
+  respaldosProgramados: () =>
+    api.request(`${B}/respaldos/programados/`, { method: 'POST', body: '{}' }),
+  createRespaldoConfig: (body) =>
+    api.request(`${B}/respaldos/`, {
+      method: 'POST',
+      body: JSON.stringify({ accion: 'config', ...body }),
+    }),
+  runRespaldo: (id) =>
+    api.request(`${B}/respaldos/`, {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
   updateRespaldo: (id, body) =>
     api.request(`${B}/respaldos/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),
+  downloadRespaldo: (historialId) =>
+    api.downloadFile(
+      `${B}/respaldos/historial/${historialId}/descargar/`,
+      `crimetrack_respaldo_${historialId}.zip`
+    ),
+  restoreRespaldoZip: (file) => {
+    const form = new FormData()
+    form.append('archivo', file)
+    return api.uploadForm(`${B}/respaldos/restaurar/`, form)
+  },
+  restoreRespaldoStatus: (taskId) => api.request(`${B}/respaldos/restaurar/estado/${taskId}/`),
+  cancelRestoreRespaldo: (taskId) =>
+    api.request(`${B}/respaldos/restaurar/cancelar/${taskId}/`, { method: 'POST' }),
   catalogos: () => api.request(`${B}/catalogos-delitos/`),
   createCatalogo: (body) =>
     api.request(`${B}/catalogos-delitos/`, { method: 'POST', body: JSON.stringify(body) }),

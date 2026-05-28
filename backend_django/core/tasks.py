@@ -121,6 +121,14 @@ def generate_realistic_crimes_task(self, total_count: int) -> dict[str, Any]:
         raise
 
 
+@shared_task(name="core.run_scheduled_backups")
+def run_scheduled_backups_task() -> dict[str, Any]:
+    from packages.administracion_sistema.services.backups_admin import BackupsAdminService
+
+    results = BackupsAdminService().run_due_scheduled()
+    return {"ejecutados": len(results), "resultados": results}
+
+
 @shared_task(bind=True, name="core.run_etl_to_minio")
 def run_etl_to_minio_task(self, export_raw_copy: bool = True) -> dict[str, Any]:
     from core.etl.star_schema import run_etl_pb_to_minio

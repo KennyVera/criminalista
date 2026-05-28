@@ -45,9 +45,15 @@ class LoginView(APIView):
             )
             return Response(result, status=status.HTTP_200_OK)
         except AuthError as exc:
+            code = getattr(exc, "code", "AUTH_ERROR")
+            http_status = (
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if code == "SYSTEM_RECOVERY"
+                else status.HTTP_401_UNAUTHORIZED
+            )
             return Response(
-                {"error": str(exc), "code": getattr(exc, "code", "AUTH_ERROR")},
-                status=status.HTTP_401_UNAUTHORIZED,
+                {"error": str(exc), "code": code},
+                status=http_status,
             )
 
 

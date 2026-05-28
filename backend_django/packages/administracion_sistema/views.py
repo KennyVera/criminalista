@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from packages.autenticacion_seguridad.permissions import IsAdminJWT
+from packages.autenticacion_seguridad.permissions import IsAdminJWT, IsAdminOrComisarioJWT
 from packages.administracion_sistema.services.backups_admin import BackupsAdminService
+from packages.administracion_sistema.services.restore_pipeline import enqueue_restore_and_etl
 from packages.administracion_sistema.services.crud_tables import TableCrudService
 from packages.administracion_sistema.services.permissions_admin import PermissionsAdminService
 from packages.administracion_sistema.services.seed import seed_admin_tables
@@ -191,15 +193,31 @@ class PublicSystemConfigView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AdminRespaldosView(APIView):
+    """CU-17: listar configuraciones y crear nuevas."""
+
     permission_classes = [IsAdminJWT]
 
     def get(self, request):
-        return Response({"items": BackupsAdminService().get_config()})
+        svc = BackupsAdminService()
+        if request.query_params.get("ejecutar_pendientes") == "1":
+            svc.run_due_scheduled()
+        return Response({"items": svc.get_config()})
 
     def post(self, request):
         try:
-            result = BackupsAdminService().run_backup(int(request.data.get("id", 1)))
-            return Response(result)
+            if request.data.get("accion") == "config":
+                row = BackupsAdminService().create_config(request.data)
+                return Response(row, status=201)
+            config_id = int(request.data.get("id", 1))
+            user = getattr(request, "crimetrack_user", {})
+            ejecutado = user.get("email") or f"usuario_{user.get('id_usuario', '')}"
+            result = BackupsAdminService().run_backup(
+                config_id,
+                manual=True,
+                ejecutado_por=str(ejecutado),
+            )
+            code = 200 if result.get("success") else 500
+            return Response(result, status=code)
         except ValueError as exc:
             return _err(exc)
 
@@ -213,6 +231,129 @@ class AdminRespaldoDetailView(APIView):
         if not row:
             return Response({"error": "No encontrado"}, status=404)
         return Response(row)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AdminRespaldosHistorialView(APIView):
+    """HU-4: historial de respaldos con estado y fecha."""
+
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request):
+        limit = int(request.query_params.get("limit", 50))
+        manual_only = request.query_params.get("manual_only", "1") != "0"
+        return Response(
+            {"items": BackupsAdminService().list_history(limit=limit, manual_only=manual_only)}
+        )
+
+    def post(self, request):
+        """Eliminación masiva: { \"accion\": \"eliminar\", \"ids\": [1, 2] }."""
+        if str(request.data.get("accion", "")).lower() != "eliminar":
+            return Response(
+                {"error": "Use accion=eliminar e ids en el cuerpo"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ids = request.data.get("ids") or []
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"error": "Indica al menos un id en ids"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(BackupsAdminService().delete_history_bulk(ids))
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AdminRespaldoHistorialDetailView(APIView):
+    """Elimina un registro del historial (y archivos MinIO asociados)."""
+
+    permission_classes = [IsAdminJWT]
+
+    def delete(self, request, historial_id: int):
+        try:
+            return Response(BackupsAdminService().delete_history(historial_id))
+        except ValueError as exc:
+            return _err(exc, 404 if "no encontrado" in str(exc).lower() else 400)
+        except Exception as exc:
+            return _err(exc, 500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AdminRespaldosAlertasView(APIView):
+    """HU-3: alertas de respaldos fallidos (Comisario + Admin)."""
+
+    permission_classes = [IsAdminOrComisarioJWT]
+
+    def get(self, request):
+        hours = int(request.query_params.get("hours", 72))
+        return Response({"items": BackupsAdminService().list_failed_alerts(hours=hours)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AdminRespaldosProgramadosView(APIView):
+    """Ejecuta respaldos programados vencidos."""
+
+    permission_classes = [IsAdminJWT]
+
+    def post(self, request):
+        results = BackupsAdminService().run_due_scheduled()
+        return Response({"ejecutados": len(results), "resultados": results})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AdminRespaldoDescargarView(APIView):
+    """Descarga un respaldo como ZIP para guardar en la PC."""
+
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request, historial_id: int):
+        try:
+            data, filename = BackupsAdminService().build_download_zip(historial_id)
+            response = HttpResponse(data, content_type="application/zip")
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            response["Content-Length"] = len(data)
+            return response
+        except ValueError as exc:
+            return _err(exc)
+        except Exception as exc:
+            return _err(exc, 500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AdminRespaldoRestaurarView(APIView):
+    """Restaura ZIP y ejecuta ETL del modelo estrella automáticamente."""
+
+    permission_classes = [IsAdminJWT]
+
+    def post(self, request):
+        upload = request.FILES.get("archivo")
+        if not upload:
+            return Response(
+                {"error": "Envía el archivo ZIP en el campo 'archivo'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not str(upload.name or "").lower().endswith(".zip"):
+            return Response(
+                {"error": "El archivo debe ser .zip"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user = getattr(request, "crimetrack_user", {})
+        ejecutado = user.get("email") or f"usuario_{user.get('id_usuario', '')}"
+        try:
+            task_id = enqueue_restore_and_etl(
+                upload.read(),
+                ejecutado_por=str(ejecutado),
+                export_raw_copy=False,
+            )
+            return Response(
+                {
+                    "task_id": task_id,
+                    "status": "running",
+                    "message": "Restauración y ETL en curso.",
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        except Exception as exc:
+            return _err(exc, 500)
 
 
 @method_decorator(csrf_exempt, name="dispatch")

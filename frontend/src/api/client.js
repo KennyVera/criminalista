@@ -47,8 +47,42 @@ function requestLong(path, options = {}, timeoutMs = 600000) {
   )
 }
 
+async function uploadForm(path, formData) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+    body: formData,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.error || data.message || res.statusText)
+  }
+  return data
+}
+
+async function downloadFile(path, filename) {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'descarga.zip'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export const api = {
   request,
+  downloadFile,
+  uploadForm,
   setAuthToken: (token) => {
     authToken = token
   },

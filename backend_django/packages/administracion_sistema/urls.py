@@ -1,5 +1,18 @@
 from django.urls import path
 
+from packages.administracion_sistema.restore_status_views import (
+    RestoreEtlCancelAdminView,
+    RestoreEtlCancelRecoveryView,
+    RestoreEtlStatusAdminView,
+    RestoreEtlStatusRecoveryView,
+)
+from packages.administracion_sistema.recovery_views import (
+    RecoveryDescargarView,
+    RecoveryHistorialView,
+    RecoveryLoginView,
+    RecoveryRestaurarView,
+    RecoveryStatusView,
+)
 from packages.administracion_sistema.views import (
     AdminCatalogoDetailView,
     AdminCatalogosView,
@@ -10,6 +23,12 @@ from packages.administracion_sistema.views import (
     AdminPoliticaDetailView,
     AdminPoliticasView,
     AdminRespaldoDetailView,
+    AdminRespaldosAlertasView,
+    AdminRespaldoHistorialDetailView,
+    AdminRespaldosHistorialView,
+    AdminRespaldosProgramadosView,
+    AdminRespaldoDescargarView,
+    AdminRespaldoRestaurarView,
     AdminRespaldosView,
     AdminRolPermisosView,
     AdminRolesView,
@@ -23,6 +42,22 @@ from packages.administracion_sistema.views import (
 )
 
 urlpatterns = [
+    path("recuperacion/estado/", RecoveryStatusView.as_view()),
+    path("recuperacion/login/", RecoveryLoginView.as_view()),
+    path("recuperacion/historial/", RecoveryHistorialView.as_view()),
+    path("recuperacion/restaurar/", RecoveryRestaurarView.as_view()),
+    path(
+        "recuperacion/restaurar/estado/<str:task_id>/",
+        RestoreEtlStatusRecoveryView.as_view(),
+    ),
+    path(
+        "recuperacion/restaurar/cancelar/<str:task_id>/",
+        RestoreEtlCancelRecoveryView.as_view(),
+    ),
+    path(
+        "recuperacion/historial/<int:historial_id>/descargar/",
+        RecoveryDescargarView.as_view(),
+    ),
     path("roles/", AdminRolesView.as_view()),
     path("usuarios/", AdminUsersListCreateView.as_view()),
     path("usuarios/<int:user_id>/", AdminUserDetailView.as_view()),
@@ -34,6 +69,26 @@ urlpatterns = [
     path("parametros/", AdminParametrosView.as_view()),
     path("parametros/<int:row_id>/", AdminParametroDetailView.as_view()),
     path("respaldos/", AdminRespaldosView.as_view()),
+    path("respaldos/historial/", AdminRespaldosHistorialView.as_view()),
+    path(
+        "respaldos/historial/<int:historial_id>/",
+        AdminRespaldoHistorialDetailView.as_view(),
+    ),
+    path(
+        "respaldos/historial/<int:historial_id>/descargar/",
+        AdminRespaldoDescargarView.as_view(),
+    ),
+    path("respaldos/restaurar/", AdminRespaldoRestaurarView.as_view()),
+    path(
+        "respaldos/restaurar/estado/<str:task_id>/",
+        RestoreEtlStatusAdminView.as_view(),
+    ),
+    path(
+        "respaldos/restaurar/cancelar/<str:task_id>/",
+        RestoreEtlCancelAdminView.as_view(),
+    ),
+    path("respaldos/alertas/", AdminRespaldosAlertasView.as_view()),
+    path("respaldos/programados/", AdminRespaldosProgramadosView.as_view()),
     path("respaldos/<int:row_id>/", AdminRespaldoDetailView.as_view()),
     path("catalogos-delitos/", AdminCatalogosView.as_view()),
     path("catalogos-delitos/<int:row_id>/", AdminCatalogoDetailView.as_view()),

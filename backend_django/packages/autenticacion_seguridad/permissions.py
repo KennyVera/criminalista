@@ -33,3 +33,13 @@ class IsAdminJWT(BasePermission):
             return False
         user = getattr(request, "crimetrack_user", {})
         return str(user.get("nombre_rol", "")).lower() == "admin"
+
+
+class IsAdminOrComisarioJWT(BasePermission):
+    """Admin o Comisario (alertas de respaldo, etc.)."""
+
+    def has_permission(self, request: Request, view) -> bool:
+        if not _attach_user_from_token(request):
+            return False
+        role = str(getattr(request, "crimetrack_user", {}).get("nombre_rol", "")).lower()
+        return role in ("admin", "comisario")

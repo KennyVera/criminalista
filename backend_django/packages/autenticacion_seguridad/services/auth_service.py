@@ -129,6 +129,15 @@ class AuthService:
         ip: str | None = None,
         user_agent: str | None = None,
     ) -> dict[str, Any]:
+        from packages.administracion_sistema.services.recovery_service import RecoveryService
+
+        recovery = RecoveryService().check_status()
+        if recovery.get("recovery_required"):
+            raise AuthError(
+                "El sistema está en modo recuperación. Use el panel de restauración de respaldos.",
+                code="SYSTEM_RECOVERY",
+            )
+
         max_attempts = get_login_max_attempts()
         user = self.get_user_by_email(email)
         if not user:

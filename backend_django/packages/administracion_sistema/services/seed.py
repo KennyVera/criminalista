@@ -4,7 +4,7 @@ from typing import Any
 
 import pandas as pd
 
-from packages.administracion_sistema.storage import ADMIN_COLLECTIONS, AdminMinioStore
+from packages.administracion_sistema.storage import SCHEMAS, AdminMinioStore
 
 DEFAULT_PERMISOS = [
     ("dashboard.ver", "Ver dashboard", "dashboard", "Acceso al panel ejecutivo"),
@@ -50,7 +50,17 @@ DEFAULT_PARAMETROS = [
 ]
 
 DEFAULT_RESPALDO = [
-    ("Respaldo diario MinIO", "diario", "backups/daily", True, "", ""),
+    (
+        "Respaldo diario MinIO",
+        "diario",
+        "backups/daily",
+        "completo",
+        "02:00",
+        True,
+        "",
+        "Pendiente de primera ejecución",
+        "",
+    ),
 ]
 
 DEFAULT_CATALOGOS = [
@@ -146,14 +156,21 @@ def seed_admin_tables(*, reset: bool = False) -> dict[str, Any]:
                 "nombre": n,
                 "frecuencia": f,
                 "destino_minio_prefix": p,
+                "tipo_respaldo": t,
+                "hora_programada": h,
                 "activo": a,
                 "ultima_ejecucion": u,
                 "ultimo_estado": e,
+                "proxima_ejecucion": px,
             }
-            for (n, f, p, a, u, e) in DEFAULT_RESPALDO
+            for (n, f, p, t, h, a, u, e, px) in DEFAULT_RESPALDO
         ]
     )
     store.write_table("sys_respaldos_config", respaldos)
+    store.write_table(
+        "sys_respaldos_historial",
+        pd.DataFrame(columns=SCHEMAS["sys_respaldos_historial"]),
+    )
 
     catalogos = pd.DataFrame(
         [
