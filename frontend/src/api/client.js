@@ -157,9 +157,11 @@ export const api = {
   runEtlToMinioAsync: () =>
     request('/etl/pb-to-minio/', {
       method: 'POST',
-      body: JSON.stringify({ export_raw_copy: true, async: true }),
+      body: JSON.stringify({ export_raw_copy: true }),
     }),
   etlTaskStatus: (taskId) => request(`/etl/status/${taskId}/`),
+  jobStatus: (taskId) => request(`/jobs/status/${taskId}/`),
+  etlStatus: (taskId) => request(`/etl-status/${taskId}/`),
   runEtlToMinio: () =>
     requestLong('/etl/pb-to-minio/', {
       method: 'POST',

@@ -6,6 +6,9 @@ import pandas as pd
 
 from packages.autenticacion_seguridad.services.auth_service import AuthService
 from packages.autenticacion_seguridad.services.passwords import hash_password
+from packages.autenticacion_seguridad.services.security_policy import (
+    validate_password_strength,
+)
 from packages.shared.minio_transactional import TransactionalMinioStore, utc_now_iso
 
 
@@ -36,6 +39,7 @@ class UsersAdminService:
         if self._email_exists(email):
             raise ValueError("El correo ya está registrado")
         password = data.get("password") or "CrimeTrack2026!"
+        validate_password_strength(str(password))
         row = {
             "fk_rol": int(data["fk_rol"]),
             "numero_placa": str(data["numero_placa"]).strip(),
@@ -72,7 +76,9 @@ class UsersAdminService:
             if field in data:
                 df.loc[mask, field] = data[field]
         if data.get("password"):
-            df.loc[mask, "password_hash"] = hash_password(str(data["password"]))
+            pwd = str(data["password"])
+            validate_password_strength(pwd)
+            df.loc[mask, "password_hash"] = hash_password(pwd)
         if str(data.get("estado_cuenta", "")).strip().lower() in ("activa", "active"):
             if "intentos_login_fallidos" not in data:
                 df.loc[mask, "intentos_login_fallidos"] = 0

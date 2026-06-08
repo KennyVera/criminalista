@@ -132,7 +132,23 @@ class AdminPoliticaDetailView(APIView):
     permission_classes = [IsAdminJWT]
 
     def patch(self, request, row_id: int):
-        row = TableCrudService("sys_politicas_seguridad").update(row_id, request.data)
+        from packages.autenticacion_seguridad.services.security_policy import (
+            validate_politica_value,
+        )
+
+        payload = dict(request.data)
+        if "valor" in payload:
+            svc = TableCrudService("sys_politicas_seguridad")
+            current = next(
+                (r for r in svc.list_all() if int(r.get("id_politica", -1)) == row_id),
+                None,
+            )
+            clave = str(payload.get("clave") or (current or {}).get("clave", ""))
+            try:
+                payload["valor"] = validate_politica_value(clave, payload["valor"])
+            except ValueError as exc:
+                return _err(exc)
+        row = TableCrudService("sys_politicas_seguridad").update(row_id, payload)
         if not row:
             return Response({"error": "No encontrado"}, status=404)
         return Response(row)

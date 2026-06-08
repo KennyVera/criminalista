@@ -17,6 +17,7 @@ import RestoreProgressCard from '../../components/RestoreProgressCard'
 import { Button, Card, Badge, Spinner } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { useRestoreWithEtl } from '../../hooks/useRestoreWithEtl'
+import { displayTablasCount, formatBackupEstado, LOGICAL_TABLES_COMPLETO, TX_TABLES_COMPLETO, ADMIN_TABLES_COMPLETO } from '../../utils/backupDisplay'
 
 const FRECUENCIAS = [
   { value: 'horario', label: 'Horario (cada 24 h)' },
@@ -26,7 +27,10 @@ const FRECUENCIAS = [
 ]
 
 const TIPOS = [
-  { value: 'completo', label: 'Completo (todas las tablas transaccionales)' },
+  {
+    value: 'completo',
+    label: `Completo (${TX_TABLES_COMPLETO} transaccionales + ${ADMIN_TABLES_COMPLETO} administración)`,
+  },
   { value: 'incremental', label: 'Incremental (sesiones y auditoría)' },
 ]
 
@@ -236,7 +240,7 @@ export default function AdminBackupsPage() {
     try {
       const r = await adminApi.runRespaldo(id)
       if (r.success) {
-        toast.success('Éxito', r.detalle || `Respaldo OK (${r.tablas_copiadas} tablas)`)
+        toast.success('Éxito', r.detalle || `Respaldo OK (${r.tablas_copiadas ?? 0} tablas)`)
       } else {
         toast.error('Respaldo fallido', r.detalle || 'No se completó correctamente')
       }
@@ -262,9 +266,13 @@ export default function AdminBackupsPage() {
       </AdminPageHeader>
 
       <p className="mb-4 text-sm text-slate-600">
-        El respaldo <strong>completo</strong> guarda las 7 tablas transaccionales + 8 tablas de
-        administración en MinIO y en el ZIP descargable. Al restaurar desde ZIP se ejecuta
-        automáticamente el ETL del modelo estrella (hechos y dimensiones para el dashboard).
+        El respaldo <strong>completo</strong> incluye{' '}
+        <strong>{LOGICAL_TABLES_COMPLETO} tablas lógicas</strong> ({TX_TABLES_COMPLETO}{' '}
+        transaccionales — asignaciones, bitácora, evidencias, etc. — más {ADMIN_TABLES_COMPLETO}{' '}
+        de administración), la capa analítica MinIO (dimensiones + hechos) y el resumen del
+        dashboard. Al restaurar un ZIP completo no hace falta ETL desde PocketBase. Los respaldos
+        anteriores pueden mostrar <strong>16 tablas</strong>; desde el próximo respaldo verás{' '}
+        <strong>{LOGICAL_TABLES_COMPLETO}</strong>.
       </p>
 
       {formOpen && (
@@ -389,8 +397,8 @@ export default function AdminBackupsPage() {
                     <td className="px-3 py-2 text-xs">{formatDt(r.proxima_ejecucion)}</td>
                     <td className="px-3 py-2 text-xs">{formatDt(r.ultima_ejecucion)}</td>
                     <td className="px-3 py-2">
-                      <Badge tone={r.activo ? 'green' : 'slate'}>
-                        {r.ultimo_estado || '—'}
+                      <Badge tone={r.activo ? 'green' : 'slate'} title={r.ultimo_estado}>
+                        {formatBackupEstado(r.ultimo_estado)}
                       </Badge>
                     </td>
                     <td className="px-3 py-2">
@@ -426,8 +434,8 @@ export default function AdminBackupsPage() {
               Restaurar desde ZIP (tu PC)
             </h3>
             <p className="mt-1 text-sm text-slate-600">
-              Si eliminaste datos en MinIO, sube el ZIP descargado antes. La restauración y el ETL
-              se ejecutan solos; verás el progreso abajo (puede tardar 15–30 min con muchos registros).
+              Si eliminaste datos en MinIO, sube el ZIP completo descargado antes. Con analítica
+              incluida la restauración es mucho más rápida (sin ETL de 320k desde PocketBase).
             </p>
             <div className="mt-4 flex flex-wrap items-end gap-3">
               <input
@@ -438,7 +446,7 @@ export default function AdminBackupsPage() {
                 disabled={restoring}
               />
               <Button type="button" onClick={restaurarZip} disabled={restoring || !restoreFile}>
-                {restoring ? 'Restaurando + ETL…' : 'Restaurar y ejecutar ETL'}
+                {restoring ? 'Restaurando…' : 'Restaurar desde ZIP'}
               </Button>
             </div>
             <div className="mt-4">
@@ -534,12 +542,17 @@ export default function AdminBackupsPage() {
                       <td className="px-3 py-2">
                         <Badge tone="blue">Manual</Badge>
                       </td>
-                      <td className="px-3 py-2 font-mono">{h.tablas_copiadas ?? 0}</td>
+                      <td className="px-3 py-2 font-mono">
+                        {displayTablasCount(h.tablas_copiadas)}
+                      </td>
                       <td className="px-3 py-2">
                         <Badge tone={estadoTone(h.estado)}>{h.estado}</Badge>
                       </td>
-                      <td className="max-w-xs truncate px-3 py-2 text-xs text-slate-600">
-                        {h.detalle}
+                      <td
+                        className="max-w-xs truncate px-3 py-2 text-xs text-slate-600"
+                        title={h.detalle}
+                      >
+                        {formatBackupEstado(h.detalle)}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">

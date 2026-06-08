@@ -16,10 +16,17 @@ import {
   BookOpen,
   MapPin,
   Activity,
+  UserCheck,
+  ClipboardList,
 } from 'lucide-react'
 import GenerateDataButton from './GenerateDataButton'
 import { useAuth } from '../context/AuthContext'
-import { canAccessAdmin, canAccessDataCrud } from '../utils/roles'
+import {
+  canAccessAdmin,
+  canAccessDataCrud,
+  canManageAsignaciones,
+  canViewInvestigacionProgress,
+} from '../utils/roles'
 
 export default function Sidebar({
   collections,
@@ -32,7 +39,10 @@ export default function Sidebar({
   const { user } = useAuth()
   const isAdmin = canAccessAdmin(user)
   const showDataMenu = canAccessDataCrud(user)
+  const showAsignaciones = canManageAsignaciones(user)
+  const showProgreso = canViewInvestigacionProgress(user)
   const [dimsOpen, setDimsOpen] = useState(false)
+  const [invOpen, setInvOpen] = useState(true)
   const [factsOpen, setFactsOpen] = useState(false)
   const [securityOpen, setSecurityOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
@@ -78,6 +88,44 @@ export default function Sidebar({
           <LayoutDashboard className="h-5 w-5 shrink-0" aria-hidden />
           {!collapsed && <span>Overview</span>}
         </NavLink>
+
+        {!collapsed && (showAsignaciones || showProgreso) && (
+          <>
+            <button
+              type="button"
+              onClick={() => setInvOpen((o) => !o)}
+              className="mt-6 flex w-full items-center justify-between px-3 text-xs font-semibold uppercase tracking-wider text-slate-400"
+              aria-expanded={invOpen}
+            >
+              Investigaciones
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${invOpen ? '' : '-rotate-90'}`}
+              />
+            </button>
+            {invOpen && (
+              <ul className="mt-2 space-y-0.5">
+                {showAsignaciones && (
+                  <li>
+                    <NavLink to="/investigaciones/asignar" className={linkClass}>
+                      <UserCheck className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                      <span className="truncate">Asignar detective</span>
+                    </NavLink>
+                  </li>
+                )}
+                {showProgreso && (
+                  <li>
+                    <NavLink to="/investigaciones/progreso" className={linkClass}>
+                      <ClipboardList className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                      <span className="truncate">
+                        {showAsignaciones ? 'Progreso investigación' : 'Mis expedientes'}
+                      </span>
+                    </NavLink>
+                  </li>
+                )}
+              </ul>
+            )}
+          </>
+        )}
 
         {!collapsed && showDataMenu && (
           <>

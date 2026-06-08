@@ -1,4 +1,4 @@
-import { Loader2, XCircle } from 'lucide-react'
+import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { Button, Card } from './ui'
 
 const PHASE_LABELS = {
@@ -6,6 +6,8 @@ const PHASE_LABELS = {
   snapshot: 'Resguardando estado actual',
   restore: 'Restaurando tablas',
   restore_done: 'Restauración lista',
+  restore_analytics: 'Restaurando capa analítica',
+  summary: 'Finalizando',
   extract: 'Extrayendo PocketBase',
   transform: 'Transformando modelo estrella',
   upload: 'Subiendo a MinIO',
@@ -21,12 +23,30 @@ export default function RestoreProgressCard({ progress, running, onCancel, canCa
 
   const phaseLabel = PHASE_LABELS[progress.phase] || progress.phase || 'Proceso'
   const isCancelling = progress.phase === 'cancelling' || progress.phase === 'cancelled'
+  const isDone =
+    !running &&
+    (progress.phase === 'done' ||
+      progress.percent >= 100 ||
+      /completad/i.test(progress.message || ''))
+  const isError = progress.phase === 'error'
 
   return (
-    <Card className="border-brand-200 bg-brand-50/30 p-6">
+    <Card
+      className={`p-6 ${
+        isDone
+          ? 'border-green-200 bg-green-50/40'
+          : isError
+            ? 'border-red-200 bg-red-50/30'
+            : 'border-brand-200 bg-brand-50/30'
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+          {isDone ? (
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+          ) : (
+            <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+          )}
           <div>
             <p className="font-semibold text-slate-900">Restauración + ETL automático</p>
             <p className="text-xs text-slate-500">{phaseLabel}</p>
@@ -55,9 +75,13 @@ export default function RestoreProgressCard({ progress, running, onCancel, canCa
         />
       </div>
       <p className="mt-3 text-xs text-slate-500">
-        {isCancelling
-          ? 'Revirtiendo tablas y modelo analítico al estado previo a esta restauración.'
-          : 'Al cancelar, los datos vuelven a como estaban antes de pulsar restaurar. El proceso puede tardar 15–30 min si no se cancela.'}
+        {isDone
+          ? 'Proceso finalizado. Puede cerrar esta sección e iniciar sesión con normalidad.'
+          : isCancelling
+            ? 'Revirtiendo tablas y modelo analítico al estado previo a esta restauración.'
+            : running
+              ? 'El proceso puede tardar 15–30 min. No cierre esta pestaña hasta ver 100%.'
+              : ''}
       </p>
     </Card>
   )

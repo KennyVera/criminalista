@@ -19,7 +19,11 @@ TRANSACTIONAL_COLLECTIONS = [
     "app_involucrados",
     "app_caso_involucrado",
     "app_evidencias",
+    "app_asignaciones",
+    "app_casos_operativos",
+    "app_expediente_bitacora",
     "app_audit_logs",
+    "app_dashboard_summary",
 ]
 
 SCHEMAS: dict[str, list[str]] = {
@@ -80,6 +84,48 @@ SCHEMAS: dict[str, list[str]] = {
         "estado_custodia",
         "fecha_subida",
     ],
+    "app_asignaciones": [
+        "id_asignacion",
+        "fk_caso",
+        "case_number",
+        "fk_detective",
+        "detective_nombre",
+        "detective_placa",
+        "fk_comisario",
+        "comisario_nombre",
+        "fecha_asignacion",
+        "estado_asignacion",
+        "notificado",
+        "fecha_notificacion",
+        "observaciones",
+        "fecha_cierre",
+        "motivo_cierre",
+        "estado_caso_snapshot",
+        "prioridad_caso_snapshot",
+        "fecha_reporte_snapshot",
+        "observaciones_caso_snapshot",
+        "avance_pct_actual",
+    ],
+    "app_casos_operativos": [
+        "id",
+        "case_number",
+        "estado_caso",
+        "fecha_reporte",
+        "prioridad_caso",
+        "investigador_asignado",
+        "indexado_en",
+    ],
+    "app_expediente_bitacora": [
+        "id_bitacora",
+        "case_number",
+        "fk_caso",
+        "fk_usuario",
+        "autor_nombre",
+        "nota",
+        "avance_pct",
+        "estado_caso",
+        "fecha_hora",
+    ],
     "app_audit_logs": [
         "id_log",
         "fk_usuario",
@@ -88,6 +134,14 @@ SCHEMAS: dict[str, list[str]] = {
         "detalle",
         "direccion_ip",
         "fecha_hora",
+    ],
+    "app_dashboard_summary": [
+        "id_summary",
+        "clave",
+        "payload_json",
+        "actualizado_en",
+        "filas_hechos",
+        "duracion_ms",
     ],
 }
 
@@ -121,7 +175,11 @@ class TransactionalMinioStore(MinioParquetStore):
             "app_involucrados": "id_involucrado",
             "app_caso_involucrado": "id_relacion",
             "app_evidencias": "id_evidencia",
+            "app_asignaciones": "id_asignacion",
+            "app_casos_operativos": "id",
+            "app_expediente_bitacora": "id_bitacora",
             "app_audit_logs": "id_log",
+            "app_dashboard_summary": "id_summary",
         }[name]
         if new_id_col not in row or row[new_id_col] is None:
             row[new_id_col] = int(df[new_id_col].max()) + 1 if len(df) else 1

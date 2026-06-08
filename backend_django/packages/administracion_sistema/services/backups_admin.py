@@ -2,26 +2,34 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
 
+from core.services.minio_store import MinioParquetStore
 from packages.administracion_sistema.storage import ADMIN_COLLECTIONS, SCHEMAS, AdminMinioStore
-from packages.shared.minio_transactional import TransactionalMinioStore, utc_now_iso
+from packages.shared.minio_transactional import (
+    TRANSACTIONAL_COLLECTIONS,
+    TransactionalMinioStore,
+    utc_now_iso,
+)
 
-FULL_TABLES = [
-    "app_roles",
-    "app_usuarios",
-    "app_sesiones_activas",
-    "app_audit_logs",
-    "app_involucrados",
-    "app_caso_involucrado",
-    "app_evidencias",
-]
+# Respaldo completo: todas las tablas transaccionales (asignaciones, bitácora, índice casos, etc.)
+FULL_TABLES = list(TRANSACTIONAL_COLLECTIONS)
+
+STAR_PREFIX = os.getenv("MINIO_STAR_PREFIX", "datasets/star")
+ANALYTICS_ZIP_PREFIX = "analitica/"
+MANIFEST_VERSION = 2
+ETL_HINT = (
+    "El respaldo completo incluye la capa analítica (datasets/star). "
+    "Al restaurar el ZIP no es necesario ETL si el manifest indica incluye_analitica=true."
+)
 
 ADMIN_TABLES = list(ADMIN_COLLECTIONS)
+EXPECTED_TABLES_COMPLETO = len(FULL_TABLES) + len(ADMIN_TABLES)
 
 INCREMENTAL_TABLES = [
     "app_sesiones_activas",
@@ -29,10 +37,6 @@ INCREMENTAL_TABLES = [
 ]
 
 MANIFEST_NAME = "crimetrack_manifest.json"
-ETL_HINT = (
-    "El modelo estrella (fact_crimes y dimensiones) no va en este ZIP; "
-    "restáuralo ejecutando: python manage.py etl_pb_to_minio (requiere crimes_220k en PocketBase)."
-)
 
 FREQ_HOURS = {
     "horario": 24,
@@ -192,6 +196,8 @@ class BackupsAdminService:
             )
 
         copied = 0
+        logical_copied = 0
+        analytics_copied = 0
         errors: list[str] = []
         files_manifest: list[str] = []
 
@@ -201,6 +207,7 @@ class BackupsAdminService:
                 self._put_parquet_key(key, self.tx.read_table(table))
                 files_manifest.append(key)
                 copied += 1
+                logical_copied += 1
             except Exception as exc:
                 errors.append(f"{table}: {exc}")
 
@@ -211,16 +218,26 @@ class BackupsAdminService:
                     self._put_parquet_key(key, self.admin.read_table(table))
                     files_manifest.append(key)
                     copied += 1
+                    logical_copied += 1
                 except Exception as exc:
                     errors.append(f"{table}: {exc}")
 
+            try:
+                analytics_copied = self._backup_analytics_layer(dest, files_manifest)
+                copied += analytics_copied
+            except Exception as exc:
+                errors.append(f"analitica: {exc}")
+
         manifest = {
-            "version": 1,
+            "version": MANIFEST_VERSION,
             "tipo": tipo,
             "generado_en": iniciado,
             "destino_minio": dest,
             "tablas_transaccionales": tables,
             "tablas_administracion": ADMIN_TABLES if tipo == "completo" else [],
+            "incluye_analitica": tipo == "completo",
+            "prefijo_analitica_zip": ANALYTICS_ZIP_PREFIX,
+            "star_prefix_minio": STAR_PREFIX,
             "archivos": files_manifest,
             "nota_modelo_estrella": ETL_HINT,
         }
@@ -235,13 +252,26 @@ class BackupsAdminService:
         finalizado = utc_now_iso()
         if success:
             estado = "completado"
-            detalle = f"OK — {copied} tablas ({tipo}) en {dest}"
+            if tipo == "completo":
+                detalle = (
+                    f"OK — {logical_copied} tablas lógicas "
+                    f"({len(FULL_TABLES)} transaccionales + {len(ADMIN_TABLES)} admin) en {dest}"
+                )
+            else:
+                detalle = f"OK — {logical_copied} tablas ({tipo}) en {dest}"
+            if analytics_copied:
+                detalle += f" (+ {analytics_copied} archivos analítica)"
         else:
             estado = "fallido"
-            detalle = f"Error — copiadas {copied}/{len(tables)}. " + "; ".join(errors[:3])
+            detalle = (
+                f"Error — {logical_copied} tablas, {analytics_copied} analítica. "
+                + "; ".join(errors[:3])
+            )
 
         if historial_id is not None:
-            self._finalize_history(historial_id, estado, detalle, copied, finalizado)
+            self._finalize_history(
+                historial_id, estado, detalle, logical_copied, finalizado
+            )
         freq = str(c.get("frecuencia", "diario"))
         hora = str(c.get("hora_programada", "02:00"))
         self.admin.update_row(
@@ -263,8 +293,11 @@ class BackupsAdminService:
             "tipo": tipo,
             "manual": manual,
             "destino": dest,
-            "tablas_copiadas": copied,
+            "tablas_copiadas": logical_copied,
+            "archivos_analitica": analytics_copied,
+            "archivos_totales": copied,
             "tablas_objetivo": len(tables),
+            "tablas_objetivo_completo": EXPECTED_TABLES_COMPLETO if tipo == "completo" else len(tables),
             "estado": estado,
             "detalle": detalle,
             "timestamp": ts,
@@ -314,6 +347,59 @@ class BackupsAdminService:
                 "tablas_copiadas": tablas,
                 "finalizado_en": finalizado,
             },
+        )
+
+    def _backup_analytics_layer(self, dest: str, files_manifest: list[str]) -> int:
+        """Copia datasets/star (dims + fact particionado) al prefijo de respaldo."""
+        prefix = STAR_PREFIX if STAR_PREFIX.endswith("/") else f"{STAR_PREFIX}/"
+        copied = 0
+        for key in self._list_prefix(prefix):
+            rel = key[len(prefix) :] if key.startswith(prefix) else key.split("/")[-1]
+            if not rel or rel.endswith("/"):
+                continue
+            dst = f"{dest}{ANALYTICS_ZIP_PREFIX}{rel}"
+            self._s3.copy_object(
+                Bucket=self._bucket,
+                Key=dst,
+                CopySource={"Bucket": self._bucket, "Key": key},
+            )
+            files_manifest.append(dst)
+            copied += 1
+        return copied
+
+    def restore_analytics_from_zip(self, zf: zipfile.ZipFile) -> tuple[int, list[str]]:
+        """Restaura Parquet OLAP desde entradas analitica/ del ZIP hacia datasets/star."""
+        star = MinioParquetStore()
+        live_prefix = star.prefix if star.prefix.endswith("/") else f"{star.prefix}/"
+        self._delete_prefix(live_prefix)
+
+        restored = 0
+        errors: list[str] = []
+        for name in zf.namelist():
+            norm = name.replace("\\", "/")
+            if not norm.startswith(ANALYTICS_ZIP_PREFIX):
+                continue
+            rel = norm[len(ANALYTICS_ZIP_PREFIX) :]
+            if not rel or rel.endswith("/"):
+                continue
+            dst_key = f"{live_prefix}{rel}"
+            try:
+                body = zf.read(name)
+                self._s3.put_object(
+                    Bucket=self._bucket,
+                    Key=dst_key,
+                    Body=body,
+                    ContentType="application/octet-stream",
+                )
+                restored += 1
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+        star.invalidate_cache()
+        return restored, errors
+
+    def zip_has_analytics(self, zf: zipfile.ZipFile) -> bool:
+        return any(
+            n.replace("\\", "/").startswith(ANALYTICS_ZIP_PREFIX) for n in zf.namelist()
         )
 
     def _put_parquet_key(self, key: str, df: pd.DataFrame) -> None:
@@ -419,12 +505,13 @@ class BackupsAdminService:
         ejecutado_por: str | None = None,
     ) -> dict[str, Any]:
         """
-        Restaura tablas transaccionales y de administración desde un ZIP descargado.
-        No restaura fact_crimes/dim_* (se regeneran con ETL).
+        Restaura tablas transaccionales, administración y capa analítica (analitica/) desde ZIP.
         """
         restored_tx: list[str] = []
         restored_admin: list[str] = []
         errors: list[str] = []
+        analytics_restored = 0
+        has_analytics = False
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
             names = zf.namelist()
@@ -434,33 +521,47 @@ class BackupsAdminService:
 
             tx_tables = set(FULL_TABLES)
             admin_tables = set(ADMIN_TABLES)
+            has_analytics = self.zip_has_analytics(zf)
 
             for name in names:
                 if not name.endswith(".parquet"):
                     continue
-                base = name.replace("\\", "/").split("/")[-1].replace(".parquet", "")
+                parts = name.replace("\\", "/").split("/")
+                base = parts[-1].replace(".parquet", "")
+                folder = parts[0] if len(parts) > 1 else ""
                 try:
                     df = pd.read_parquet(io.BytesIO(zf.read(name)))
                 except Exception as exc:
                     errors.append(f"{name}: {exc}")
                     continue
 
-                if base in tx_tables:
+                if folder == "transaccional" or (folder not in ("administracion",) and base in tx_tables):
                     try:
                         self.tx.write_table(base, df)
                         if base not in restored_tx:
                             restored_tx.append(base)
                     except Exception as exc:
                         errors.append(f"tx/{base}: {exc}")
-                elif base in admin_tables:
+                elif folder == "administracion" or base in admin_tables:
                     try:
                         self.admin.write_table(base, df)
                         if base not in restored_admin:
                             restored_admin.append(base)
                     except Exception as exc:
                         errors.append(f"admin/{base}: {exc}")
-                else:
+                elif base in tx_tables:
+                    try:
+                        self.tx.write_table(base, df)
+                        if base not in restored_tx:
+                            restored_tx.append(base)
+                    except Exception as exc:
+                        errors.append(f"tx/{base}: {exc}")
+                elif base not in admin_tables:
                     errors.append(f"Tabla desconocida en ZIP: {base}")
+
+            if has_analytics:
+                analytics_restored, a_err = self.restore_analytics_from_zip(zf)
+                errors.extend(a_err)
 
         try:
             self.tx.append_row(
@@ -471,7 +572,8 @@ class BackupsAdminService:
                     "tabla_afectada": "minio_transaccional+admin",
                     "detalle": (
                         f"Restauración ZIP por {ejecutado_por or 'admin'}: "
-                        f"tx={len(restored_tx)}, admin={len(restored_admin)}"
+                        f"tx={len(restored_tx)}, admin={len(restored_admin)}, "
+                        f"analitica={analytics_restored}"
                     ),
                     "direccion_ip": "local",
                     "fecha_hora": utc_now_iso(),
@@ -481,17 +583,26 @@ class BackupsAdminService:
             pass
 
         ok = (restored_tx or restored_admin) and not errors
+        needs_etl = not has_analytics
         return {
             "success": bool(restored_tx or restored_admin),
             "restored_transaccional": restored_tx,
             "restored_administracion": restored_admin,
+            "restored_analytics_objects": analytics_restored,
             "errors": errors,
             "manifest": manifest,
-            "etl_siguiente_paso": ETL_HINT,
+            "needs_etl": needs_etl,
+            "etl_siguiente_paso": (
+                ETL_HINT if not needs_etl else "Ejecute ETL solo si el ZIP no incluye analitica/."
+            ),
             "message": (
-                "Restauración completada. Ejecuta ETL para regenerar el modelo estrella."
-                if ok
-                else "Restauración parcial o fallida."
+                "Restauración completada (incluye capa analítica)."
+                if ok and not needs_etl
+                else (
+                    "Restauración completada. Ejecuta ETL si falta analitica/."
+                    if ok
+                    else "Restauración parcial o fallida."
+                )
             ),
         }
 

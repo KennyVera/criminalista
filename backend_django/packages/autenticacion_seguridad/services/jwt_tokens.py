@@ -13,7 +13,17 @@ def _secret() -> str:
 
 
 def _exp_hours() -> int:
-    return int(os.getenv("JWT_EXPIRE_HOURS", "12"))
+    env = os.getenv("JWT_EXPIRE_HOURS", "").strip()
+    if env:
+        try:
+            return max(1, min(int(env), 168))
+        except ValueError:
+            pass
+    from packages.autenticacion_seguridad.services.security_policy import (
+        get_session_hours,
+    )
+
+    return get_session_hours()
 
 
 def token_expiration() -> datetime:

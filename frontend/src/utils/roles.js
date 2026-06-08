@@ -32,3 +32,17 @@ export function canAccessDataCrud(user) {
 export function canAccessAdmin(user) {
   return isAdmin(user)
 }
+
+export function isDetective(user) {
+  return normalizeRole(user) === 'detective'
+}
+
+export function canManageAsignaciones(user) {
+  const r = normalizeRole(user)
+  return r === 'comisario' || r === 'admin'
+}
+
+export function canViewInvestigacionProgress(user) {
+  const r = normalizeRole(user)
+  return r === 'comisario' || r === 'detective' || r === 'admin'
+}

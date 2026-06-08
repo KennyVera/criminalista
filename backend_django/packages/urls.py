@@ -18,4 +18,12 @@ urlpatterns = [
     path("autenticacion/", include("packages.autenticacion_seguridad.urls")),
     path("administracion/", include("packages.administracion_sistema.urls")),
     path("dashboard-analitica/", include("packages.dashboard_analitica.urls")),
+    path(
+        "asignacion-investigaciones/",
+        include("packages.asignacion_investigaciones.urls"),
+    ),
+    path(
+        "expedientes-criminales/",
+        include("packages.expedientes_criminales.urls"),
+    ),
 ]

@@ -21,6 +21,9 @@ from packages.administracion_sistema.services.backups_admin import (
     FULL_TABLES,
     BackupsAdminService,
 )
+from packages.dashboard_analitica.services.summary_materializer import (
+    materialize_dashboard_summary,
+)
 
 PROGRESS_TTL = 3600 * 2
 ROLLBACK_ROOT = "datasets/_restore_rollback"
@@ -245,6 +248,7 @@ def run_restore_and_etl(
     emit(2, "Guardando copia de seguridad del estado actual...", "snapshot")
 
     with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+        has_analytics = backups.zip_has_analytics(zf)
         parquet_names = [n for n in zf.namelist() if n.endswith(".parquet")]
         tx_tables = set(FULL_TABLES)
         admin_tables = set(ADMIN_TABLES)
@@ -264,6 +268,9 @@ def run_restore_and_etl(
         for t in tables_to_snap_admin:
             abort_if_cancelled()
             rollback.snapshot_admin(t)
+        if not has_analytics:
+            abort_if_cancelled()
+            rollback.snapshot_star_schema()
 
         abort_if_cancelled()
         emit(4, "Analizando archivo ZIP...", "init")
@@ -273,10 +280,13 @@ def run_restore_and_etl(
         restored_tx: list[str] = []
         restored_admin: list[str] = []
         errors: list[str] = []
+        analytics_objects = 0
 
         for idx, name in enumerate(parquet_names):
             abort_if_cancelled()
-            base = name.replace("\\", "/").split("/")[-1].replace(".parquet", "")
+            parts = name.replace("\\", "/").split("/")
+            base = parts[-1].replace(".parquet", "")
+            folder = parts[0] if len(parts) > 1 else ""
             pct_restore = 5 + int(20 * (idx + 1) / total)
             emit(pct_restore, f"Restaurando {base}...", "restore", table=base)
             try:
@@ -285,7 +295,9 @@ def run_restore_and_etl(
                 errors.append(f"{name}: {exc}")
                 continue
 
-            if base in tx_tables:
+            if folder == "transaccional" or (
+                folder != "administracion" and base in tx_tables
+            ):
                 try:
                     backups.tx.write_table(base, df)
                     rollback.touched_tx.append(base)
@@ -293,7 +305,7 @@ def run_restore_and_etl(
                         restored_tx.append(base)
                 except Exception as exc:
                     errors.append(f"tx/{base}: {exc}")
-            elif base in admin_tables:
+            elif folder == "administracion" or base in admin_tables:
                 try:
                     backups.admin.write_table(base, df)
                     rollback.touched_admin.append(base)
@@ -301,8 +313,21 @@ def run_restore_and_etl(
                         restored_admin.append(base)
                 except Exception as exc:
                     errors.append(f"admin/{base}: {exc}")
-            else:
-                errors.append(f"Tabla desconocida: {base}")
+            elif base in tx_tables:
+                try:
+                    backups.tx.write_table(base, df)
+                    rollback.touched_tx.append(base)
+                    if base not in restored_tx:
+                        restored_tx.append(base)
+                except Exception as exc:
+                    errors.append(f"tx/{base}: {exc}")
+
+        if has_analytics:
+            abort_if_cancelled()
+            emit(22, "Restaurando capa analítica (OLAP) desde ZIP...", "restore_analytics")
+            analytics_objects, a_err = backups.restore_analytics_from_zip(zf)
+            errors.extend(a_err)
+            rollback.star_snapshotted = True
 
     abort_if_cancelled()
 
@@ -315,51 +340,74 @@ def run_restore_and_etl(
 
     emit(
         25,
-        f"Restauración OK ({len(restored_tx)} TX + {len(restored_admin)} admin). Iniciando ETL...",
+        (
+            f"Restauración OK ({len(restored_tx)} TX + {len(restored_admin)} admin"
+            f"{f', {analytics_objects} objs analítica' if has_analytics else ''})."
+        ),
         "restore_done",
         restored_transaccional=restored_tx,
         restored_administracion=restored_admin,
+        restored_analytics_objects=analytics_objects,
     )
 
-    abort_if_cancelled()
-    emit(26, "Resguardando modelo analítico actual...", "snapshot")
-    rollback.snapshot_star_schema()
+    etl_result: dict[str, Any] | None = None
+    summary_result: dict[str, Any] | None = None
 
-    def etl_progress(state: dict[str, Any]) -> None:
+    if has_analytics:
         abort_if_cancelled()
-        etl_pct = int(state.get("percent", 0))
-        combined = 25 + int(0.74 * etl_pct)
-        emit(
-            combined,
-            state.get("message", "ETL modelo estrella..."),
-            state.get("phase", "etl"),
-        )
+        emit(90, "Capa analítica restaurada desde ZIP (sin ETL PocketBase).", "summary")
+        if "app_dashboard_summary" not in restored_tx:
+            emit(92, "Regenerando resumen del dashboard...", "summary")
+            summary_result = materialize_dashboard_summary()
+    else:
+        abort_if_cancelled()
+        emit(26, "Resguardando modelo analítico actual...", "snapshot")
+        rollback.snapshot_star_schema()
 
-    try:
-        etl_result = run_etl_pb_to_minio(
-            export_raw_copy=export_raw_copy,
-            on_progress=etl_progress,
-            should_cancel=lambda: is_cancelled(task_id),
-        )
-    except RestoreCancelled:
-        raise
-    except RuntimeError as exc:
-        if is_cancelled(task_id) or "cancelado" in str(exc).lower():
-            raise RestoreCancelled(str(exc)) from exc
-        raise RuntimeError(f"ETL falló tras restaurar: {exc}") from exc
+        def etl_progress(state: dict[str, Any]) -> None:
+            abort_if_cancelled()
+            etl_pct = int(state.get("percent", 0))
+            combined = 25 + int(0.74 * etl_pct)
+            emit(
+                combined,
+                state.get("message", "ETL modelo estrella..."),
+                state.get("phase", "etl"),
+            )
+
+        try:
+            etl_result = run_etl_pb_to_minio(
+                export_raw_copy=export_raw_copy,
+                on_progress=etl_progress,
+                should_cancel=lambda: is_cancelled(task_id),
+            )
+            summary_result = materialize_dashboard_summary()
+        except RestoreCancelled:
+            raise
+        except RuntimeError as exc:
+            if is_cancelled(task_id) or "cancelado" in str(exc).lower():
+                raise RestoreCancelled(str(exc)) from exc
+            raise RuntimeError(f"ETL falló tras restaurar: {exc}") from exc
 
     invalidate_dashboard_cache()
     rollback.cleanup()
 
+    if has_analytics:
+        msg = "Restauración completada (OLAP incluido en ZIP). Ya puede iniciar sesión."
+    else:
+        msg = "Restauración y ETL completados. Ya puede iniciar sesión."
+
     result = {
         "success": True,
-        "message": "Restauración y ETL completados. Ya puede iniciar sesión.",
+        "message": msg,
         "restore": {
             "restored_transaccional": restored_tx,
             "restored_administracion": restored_admin,
+            "restored_analytics_objects": analytics_objects,
             "errors": errors,
+            "skipped_etl": has_analytics,
         },
         "etl": etl_result,
+        "dashboard_summary": summary_result,
     }
 
     _set_progress(

@@ -62,7 +62,7 @@ PACKAGE_REGISTRY: tuple[PackageMeta, ...] = (
         nombre="Gestión de Expedientes Criminales",
         carpeta="expedientes_criminales",
         descripcion="Expedientes y casos operativos.",
-        implementado=False,
+        implementado=True,
     ),
     PackageMeta(
         id="involucrados",
@@ -83,7 +83,7 @@ PACKAGE_REGISTRY: tuple[PackageMeta, ...] = (
         nombre="Asignación y Seguimiento de Investigaciones",
         carpeta="asignacion_investigaciones",
         descripcion="Asignación de casos a investigadores.",
-        implementado=False,
+        implementado=True,
     ),
 )
 

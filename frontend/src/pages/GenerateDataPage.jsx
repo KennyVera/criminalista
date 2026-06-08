@@ -11,13 +11,8 @@ import { api } from '../api/client'
 import { Button, Card, Badge } from '../components/ui'
 
 const MAX_TOTAL = 500_000
-const POLL_MS = 1200
+const POLL_MS = 1500
 const PREVIEW_MAX = 8
-/** Hasta este total: API directa por lotes. Por encima: Celery (32 hilos). */
-const DIRECT_MAX = 2_000
-const BATCH_SIZE = 2_000
-const INSERT_WORKERS = 32
-const CELERY_PENDING_MAX_POLLS = 6
 /** Requisito académico: +100k históricos hacia ~300k */
 const REALISTIC_100K = 100_000
 
@@ -90,52 +85,11 @@ export default function GenerateDataPage() {
     setPhase(PHASE.preview)
   }
 
-  const generateDirectBatches = async (total, { realistic = false } = {}) => {
-    let done = 0
-    let created = 0
-    let errors = 0
-    const samples = []
-    const batchFn = realistic
-      ? api.generateFakeDataRealisticBatch
-      : api.generateFakeDataBatch
+  const pollGenerateStatus = (taskId) =>
+    api.generateFakeDataStatus(taskId).catch(() => api.jobStatus(taskId))
 
-    while (done < total) {
-      if (cancelRef.current) return
-      const chunk = Math.min(BATCH_SIZE, total - done)
-      setStatusHint(
-        realistic
-          ? `Lote histórico ${Math.floor(done / BATCH_SIZE) + 1} (2001–2026)...`
-          : `Insertando lote ${Math.floor(done / BATCH_SIZE) + 1}...`
-      )
-      const res = await batchFn(chunk, INSERT_WORKERS)
-      const batchCreated = res.raw?.created ?? res.inserted_facts ?? 0
-      const batchErrors = res.raw?.errors ?? 0
-      created += batchCreated
-      errors += batchErrors
-      done += chunk
-      for (const s of res.samples || []) {
-        if (samples.length < PREVIEW_MAX) samples.push(s)
-      }
-      const percent = Math.round((100 * done) / total)
-      setProgress({
-        done,
-        total,
-        created,
-        errors,
-        percent,
-      })
-      setPreviewRows(samples.slice(-PREVIEW_MAX))
-    }
-
-    finishGeneration(
-      {
-        samples,
-        raw: { created, errors },
-        inserted_facts: created,
-      },
-      total
-    )
-  }
+  const pollEtlStatus = (taskId) =>
+    api.etlTaskStatus(taskId).catch(() => api.etlStatus(taskId))
 
   const pollTask = (fetchStatus, onUpdate, onDone) =>
     new Promise((resolve, reject) => {
@@ -177,9 +131,10 @@ export default function GenerateDataPage() {
     setProgress({ done: 0, total, created: 0, errors: 0, percent: 0 })
 
     try {
+      setStatusHint('Tarea en segundo plano (lotes de 5.000)...')
       const queued = await api.generateFakeDataAsync(total, true)
       await pollTask(
-        () => api.generateFakeDataStatus(queued.task_id),
+        () => pollGenerateStatus(queued.task_id),
         (st) => {
           setProgress({
             done: st.done ?? 0,
@@ -196,14 +151,9 @@ export default function GenerateDataPage() {
           finishGeneration(st.result || st, total)
         }
       )
-    } catch {
-      try {
-        await generateDirectBatches(total, { realistic: true })
-      } catch (err) {
-        setErrorMsg(err.message)
-        setPhase(PHASE.error)
-        return
-      }
+    } catch (err) {
+      setErrorMsg(err.message)
+      setPhase(PHASE.error)
     }
   }
 
@@ -219,32 +169,16 @@ export default function GenerateDataPage() {
     setProgress({ done: 0, total, created: 0, errors: 0, percent: 0 })
 
     try {
-      if (total <= DIRECT_MAX) {
-        setStatusHint(`Insercion paralela (${INSERT_WORKERS} workers por lote).`)
-        await generateDirectBatches(total)
-        if (cancelRef.current) reset()
-        return
-      }
-
+      setStatusHint('Tarea en segundo plano (lotes de 5.000, sin bloquear el navegador)...')
       const queued = await api.generateFakeDataAsync(total)
-      let pendingPolls = 0
       await pollTask(
-        () => api.generateFakeDataStatus(queued.task_id),
+        () => pollGenerateStatus(queued.task_id),
         (st) => {
-          if (st.status === 'pending') {
-            pendingPolls += 1
-            setStatusHint(
-              pendingPolls >= CELERY_PENDING_MAX_POLLS
-                ? 'Celery no responde; cambiando a modo directo por lotes...'
-                : 'En cola (Celery). Si tarda, se usara modo directo...'
-            )
-            if (pendingPolls >= CELERY_PENDING_MAX_POLLS) {
-              throw new Error('__FALLBACK_DIRECT__')
-            }
-            return
-          }
-          pendingPolls = 0
-          setStatusHint(null)
+          setStatusHint(
+            st.status === 'pending' || st.status === 'queued'
+              ? 'En cola / iniciando...'
+              : null
+          )
           setProgress({
             done: st.done ?? 0,
             total: st.total ?? total,
@@ -266,17 +200,6 @@ export default function GenerateDataPage() {
       )
       if (cancelRef.current) reset()
     } catch (err) {
-      if (err.message === '__FALLBACK_DIRECT__') {
-        try {
-          await generateDirectBatches(total)
-          if (cancelRef.current) reset()
-          return
-        } catch (inner) {
-          setErrorMsg(inner.message)
-          setPhase(PHASE.error)
-          return
-        }
-      }
       setErrorMsg(err.message)
       setPhase(PHASE.error)
     }
@@ -289,7 +212,7 @@ export default function GenerateDataPage() {
     try {
       const queued = await api.runEtlToMinioAsync()
       await pollTask(
-        () => api.etlTaskStatus(queued.task_id),
+        () => pollEtlStatus(queued.task_id),
         (st) => {
           setEtlProgress({
             percent: st.percent ?? (st.status === 'completed' ? 100 : 0),
@@ -340,8 +263,8 @@ export default function GenerateDataPage() {
                 className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               />
               <span className="mt-1 block text-xs text-slate-500">
-                Hasta {DIRECT_MAX.toLocaleString('es-CO')}: lotes de {BATCH_SIZE} con {INSERT_WORKERS}{' '}
-                workers. 100k+: Celery (recomendado: worker activo).
+                La generación corre en segundo plano (lotes de 5.000, inserción paralela). Hasta{' '}
+                {MAX_TOTAL.toLocaleString('es-CO')} registros sin bloquear el navegador.
               </span>
             </label>
 

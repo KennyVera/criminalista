@@ -545,7 +545,7 @@ def _parse_generate_count(request) -> tuple[int | None, Response | None]:
 
 @method_decorator(csrf_exempt, name="dispatch")
 class GenerateFakeDataView(APIView):
-    """POST /api/generate-fake-data/ — inserta registros Faker en crimes_220k."""
+    """POST /api/generate-fake-data/ — encola generación (202 + task_id, no bloquea)."""
 
     authentication_classes = []
     permission_classes = []
@@ -559,31 +559,33 @@ class GenerateFakeDataView(APIView):
                 {"error": f"'count' debe estar entre 1 y {MAX_FACTS_PER_REQUEST}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        workers = min(int(request.data.get("workers", 32)), 64)
-        try:
-            result = run_faker_seed(count, workers=workers)
-            code = (
-                status.HTTP_201_CREATED
-                if result.get("success")
-                else status.HTTP_400_BAD_REQUEST
-            )
-            return Response(result, status=code)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except PocketBaseError as exc:
-            return _bad_gateway(exc)
-        except Exception as exc:
-            return Response(
-                {"error": f"Error generando datos: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        if request.data.get("sync") is True:
+            try:
+                result = run_faker_seed(count)
+                code = (
+                    status.HTTP_201_CREATED
+                    if result.get("success")
+                    else status.HTTP_400_BAD_REQUEST
+                )
+                return Response(result, status=code)
+            except Exception as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        from core.async_jobs import enqueue_faker_job
+
+        payload = enqueue_faker_job(count, realistic=False)
+        return Response(
+            {
+                **payload,
+                "message": "Generación en segundo plano. Consulta el estado con task_id.",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class GenerateFakeDataBatchView(APIView):
-    """POST /api/generate-fake-data/batch/ — lote pequeno (progreso en cliente)."""
+    """POST /api/generate-fake-data/batch/ — encola lote (máx. 5000 por petición)."""
 
     authentication_classes = []
     permission_classes = []
@@ -597,31 +599,27 @@ class GenerateFakeDataBatchView(APIView):
                 {"error": f"'count' debe estar entre 1 y {MAX_BATCH_SIZE} por lote"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        workers = min(int(request.data.get("workers", 32)), 64)
-        try:
-            result = run_faker_seed_batch(count, workers=workers)
-            code = (
-                status.HTTP_201_CREATED
-                if result.get("success")
-                else status.HTTP_400_BAD_REQUEST
-            )
-            return Response(result, status=code)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except PocketBaseError as exc:
-            return _bad_gateway(exc)
-        except Exception as exc:
-            return Response(
-                {"error": f"Error generando datos: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        if request.data.get("sync") is True:
+            try:
+                result = run_faker_seed_batch(count)
+                code = (
+                    status.HTTP_201_CREATED
+                    if result.get("success")
+                    else status.HTTP_400_BAD_REQUEST
+                )
+                return Response(result, status=code)
+            except Exception as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        from core.async_jobs import enqueue_faker_job
+
+        payload = enqueue_faker_job(count, realistic=False)
+        return Response({**payload, "batch": True}, status=status.HTTP_202_ACCEPTED)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class GenerateFakeDataRealisticBatchView(APIView):
-    """POST /api/generate-fake-data/realistic/batch/ — hechos 2001–2026 por lote."""
+    """POST /api/generate-fake-data/realistic/batch/ — encola lote realista 2001–2026."""
 
     authentication_classes = []
     permission_classes = []
@@ -635,24 +633,22 @@ class GenerateFakeDataRealisticBatchView(APIView):
                 {"error": f"'count' debe estar entre 1 y {MAX_BATCH_SIZE} por lote"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        workers = min(int(request.data.get("workers", 32)), 64)
-        try:
-            result = run_realistic_seed_batch(count, workers=workers)
-            code = (
-                status.HTTP_201_CREATED
-                if result.get("success")
-                else status.HTTP_400_BAD_REQUEST
-            )
-            return Response(result, status=code)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except PocketBaseError as exc:
-            return _bad_gateway(exc)
-        except Exception as exc:
-            return Response(
-                {"error": f"Error generando datos realistas: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        if request.data.get("sync") is True:
+            try:
+                result = run_realistic_seed_batch(count)
+                code = (
+                    status.HTTP_201_CREATED
+                    if result.get("success")
+                    else status.HTTP_400_BAD_REQUEST
+                )
+                return Response(result, status=code)
+            except Exception as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        from core.async_jobs import enqueue_faker_job
+
+        payload = enqueue_faker_job(count, realistic=True)
+        return Response({**payload, "realistic": True, "batch": True}, status=status.HTTP_202_ACCEPTED)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -666,19 +662,22 @@ class RunEtlToMinioView(APIView):
         from core.services.analytics_service import invalidate_dashboard_cache
 
         export_raw = request.data.get("export_raw_copy", True)
-        async_mode = request.data.get("async", False)
         try:
-            if async_mode:
-                from core.tasks import run_etl_to_minio_task
+            if request.data.get("sync") is True:
+                result = run_etl_pb_to_minio(export_raw_copy=bool(export_raw))
+                invalidate_dashboard_cache()
+                return Response(result, status=status.HTTP_200_OK)
 
-                task = run_etl_to_minio_task.delay(export_raw_copy=bool(export_raw))
-                return Response(
-                    {"task_id": task.id, "status": "queued", "message": "ETL en cola (Celery)"},
-                    status=status.HTTP_202_ACCEPTED,
-                )
-            result = run_etl_pb_to_minio(export_raw_copy=bool(export_raw))
-            invalidate_dashboard_cache()
-            return Response(result, status=status.HTTP_200_OK)
+            from core.async_jobs import enqueue_etl_job
+
+            payload = enqueue_etl_job(export_raw_copy=bool(export_raw))
+            return Response(
+                {
+                    **payload,
+                    "message": "ETL en segundo plano. Consulta /api/etl-status/<task_id>/",
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
@@ -705,82 +704,39 @@ class GenerateFakeDataAsyncView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         realistic = bool(request.data.get("realistic", False))
-        try:
-            if realistic:
-                from core.tasks import generate_realistic_crimes_task
+        from core.async_jobs import enqueue_faker_job
 
-                task = generate_realistic_crimes_task.delay(count)
-                msg = "Generacion realista (2001–2026) en segundo plano (Celery)"
-            else:
-                from core.tasks import generate_fake_crimes_task
-
-                task = generate_fake_crimes_task.delay(count)
-                msg = "Generacion en segundo plano (Celery)"
-
-            return Response(
-                {
-                    "task_id": task.id,
-                    "status": "queued",
-                    "total": count,
-                    "realistic": realistic,
-                    "message": msg,
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-        except Exception as exc:
-            return Response(
-                {"error": f"No se pudo encolar la tarea: {exc}. ¿Celery worker activo?"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+        payload = enqueue_faker_job(count, realistic=realistic)
+        return Response(
+            {
+                **payload,
+                "message": "Generación en segundo plano. Consulta el estado con task_id.",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
-class EtlTaskStatusView(APIView):
+class UnifiedJobStatusView(APIView):
+    """GET estado unificado (faker, ETL, Celery o hilo en segundo plano)."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, task_id: str):
+        from core.async_jobs import resolve_job_status
+
+        data = resolve_job_status(task_id)
+        return Response(data)
+
+
+class EtlTaskStatusView(UnifiedJobStatusView):
     """GET /api/etl/status/<task_id>/"""
 
-    authentication_classes = []
-    permission_classes = []
 
-    def get(self, request, task_id: str):
-        from django.core.cache import cache
-
-        data = cache.get(f"crimetrack:etl:progress:{task_id}")
-        if data:
-            return Response(data)
-        return Response({"status": "pending", "task_id": task_id})
+class EtlStatusAliasView(UnifiedJobStatusView):
+    """GET /api/etl-status/<task_id>/ — alias para polling del frontend."""
 
 
-class GenerateFakeDataTaskStatusView(APIView):
-    """GET /api/generate-fake-data/status/<task_id>/ — progreso Redis."""
-
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request, task_id: str):
-        from django.core.cache import cache
-
-        data = cache.get(f"crimetrack:faker:progress:{task_id}")
-        if data:
-            return Response(data)
-
-        try:
-            from celery.result import AsyncResult
-
-            from crimetrack.celery import app as celery_app
-
-            result = AsyncResult(task_id, app=celery_app)
-            if result.state == "PENDING":
-                return Response({"status": "pending", "task_id": task_id})
-            if result.ready():
-                if result.successful():
-                    return Response(result.result or {"status": "completed"})
-                return Response(
-                    {"status": "failed", "error": str(result.result)},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-            return Response({"status": result.state.lower(), "task_id": task_id})
-        except Exception as exc:
-            return Response(
-                {"status": "unknown", "task_id": task_id, "error": str(exc)},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+class GenerateFakeDataTaskStatusView(UnifiedJobStatusView):
+    """GET /api/generate-fake-data/status/<task_id>/"""
 

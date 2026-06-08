@@ -12,6 +12,17 @@ DEFAULT_ADMIN_EMAIL = "kennyvera43@gmail.com"
 DEFAULT_ADMIN_PASSWORD = "CrimeTrack2026!"
 DEFAULT_ADMIN_PLACA = "CPD-1001"
 
+DEFAULT_COMISARIO_EMAIL = "comisario@crimetrack.local"
+DEFAULT_COMISARIO_PASSWORD = "Comisario2026!"
+DEFAULT_COMISARIO_PLACA = "CPD-2001"
+
+DEFAULT_DETECTIVE_EMAIL = "detective@crimetrack.local"
+DEFAULT_DETECTIVE_PASSWORD = "Detective2026!"
+DEFAULT_DETECTIVE_PLACA = "CPD-3001"
+
+FK_ROL_COMISARIO = 2
+FK_ROL_DETECTIVE = 3
+
 
 def seed_auth_data(
     store: TransactionalMinioStore | None = None,
@@ -55,7 +66,31 @@ def seed_auth_data(
                 "estado_cuenta": "Activa",
                 "intentos_login_fallidos": 0,
                 "fecha_creacion": utc_now_iso(),
-            }
+            },
+            {
+                "id_usuario": 2,
+                "fk_rol": FK_ROL_COMISARIO,
+                "numero_placa": DEFAULT_COMISARIO_PLACA,
+                "nombres": "María",
+                "apellidos": "López",
+                "email": DEFAULT_COMISARIO_EMAIL,
+                "password_hash": hash_password(DEFAULT_COMISARIO_PASSWORD),
+                "estado_cuenta": "Activa",
+                "intentos_login_fallidos": 0,
+                "fecha_creacion": utc_now_iso(),
+            },
+            {
+                "id_usuario": 3,
+                "fk_rol": FK_ROL_DETECTIVE,
+                "numero_placa": DEFAULT_DETECTIVE_PLACA,
+                "nombres": "Carlos",
+                "apellidos": "Ramírez",
+                "email": DEFAULT_DETECTIVE_EMAIL,
+                "password_hash": hash_password(DEFAULT_DETECTIVE_PASSWORD),
+                "estado_cuenta": "Activa",
+                "intentos_login_fallidos": 0,
+                "fecha_creacion": utc_now_iso(),
+            },
         ]
     )
     store.write_table("app_usuarios", usuarios)
@@ -75,9 +110,7 @@ def seed_auth_data(
     return {
         "roles": len(roles),
         "usuarios": len(usuarios),
-        "email": DEFAULT_ADMIN_EMAIL,
-        "password": DEFAULT_ADMIN_PASSWORD,
-        "numero_placa": DEFAULT_ADMIN_PLACA,
+        "credentials": _default_credentials_payload(),
         "minio_prefix": store.prefix,
         "tables": [
             "app_roles",
@@ -86,6 +119,117 @@ def seed_auth_data(
             "app_involucrados",
             "app_caso_involucrado",
             "app_evidencias",
+            "app_asignaciones",
+            "app_casos_operativos",
+            "app_expediente_bitacora",
             "app_audit_logs",
         ],
+    }
+
+
+def _default_credentials_payload() -> list[dict[str, str]]:
+    return [
+        {
+            "rol": "Admin",
+            "email": DEFAULT_ADMIN_EMAIL,
+            "password": DEFAULT_ADMIN_PASSWORD,
+            "numero_placa": DEFAULT_ADMIN_PLACA,
+        },
+        {
+            "rol": "Comisario",
+            "email": DEFAULT_COMISARIO_EMAIL,
+            "password": DEFAULT_COMISARIO_PASSWORD,
+            "numero_placa": DEFAULT_COMISARIO_PLACA,
+        },
+        {
+            "rol": "Detective",
+            "email": DEFAULT_DETECTIVE_EMAIL,
+            "password": DEFAULT_DETECTIVE_PASSWORD,
+            "numero_placa": DEFAULT_DETECTIVE_PLACA,
+        },
+    ]
+
+
+def ensure_operational_users(
+    store: TransactionalMinioStore | None = None,
+) -> dict[str, Any]:
+    """
+    Añade Comisario y Detective si no existen (no borra usuarios actuales).
+    Garantiza roles en app_roles.
+    """
+    store = store or TransactionalMinioStore()
+    store.ensure_tables()
+
+    roles = pd.DataFrame(
+        [
+            {"id_rol": 1, "nombre_rol": "Admin", "descripcion": "Administrador del sistema"},
+            {"id_rol": 2, "nombre_rol": "Comisario", "descripcion": "Mando policial"},
+            {"id_rol": 3, "nombre_rol": "Detective", "descripcion": "Investigador"},
+            {"id_rol": 4, "nombre_rol": "Oficial", "descripcion": "Oficial operativo"},
+            {
+                "id_rol": 5,
+                "nombre_rol": "Analista Criminal",
+                "descripcion": "Analítica criminal y KPIs operativos",
+            },
+        ]
+    )
+    store.write_table("app_roles", roles)
+
+    df = store.read_table("app_usuarios")
+    if df.empty:
+        df = pd.DataFrame(columns=store.read_table("app_usuarios").columns)
+
+    emails = set(df["email"].astype(str).str.lower()) if not df.empty else set()
+    next_id = int(df["id_usuario"].max()) + 1 if not df.empty and "id_usuario" in df.columns else 1
+
+    to_add = [
+        (
+            DEFAULT_COMISARIO_EMAIL,
+            FK_ROL_COMISARIO,
+            DEFAULT_COMISARIO_PLACA,
+            "María",
+            "López",
+            DEFAULT_COMISARIO_PASSWORD,
+        ),
+        (
+            DEFAULT_DETECTIVE_EMAIL,
+            FK_ROL_DETECTIVE,
+            DEFAULT_DETECTIVE_PLACA,
+            "Carlos",
+            "Ramírez",
+            DEFAULT_DETECTIVE_PASSWORD,
+        ),
+    ]
+
+    created: list[str] = []
+    skipped: list[str] = []
+    for email, fk_rol, placa, nombres, apellidos, password in to_add:
+        key = email.lower()
+        if key in emails:
+            skipped.append(email)
+            continue
+        row = {
+            "id_usuario": next_id,
+            "fk_rol": fk_rol,
+            "numero_placa": placa,
+            "nombres": nombres,
+            "apellidos": apellidos,
+            "email": key,
+            "password_hash": hash_password(password),
+            "estado_cuenta": "Activa",
+            "intentos_login_fallidos": 0,
+            "fecha_creacion": utc_now_iso(),
+        }
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        emails.add(key)
+        created.append(email)
+        next_id += 1
+
+    if created:
+        store.write_table("app_usuarios", df)
+
+    return {
+        "created": created,
+        "skipped": skipped,
+        "credentials": _default_credentials_payload(),
     }

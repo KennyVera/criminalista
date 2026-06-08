@@ -1,4 +1,3 @@
-"""Paquete: Gestión de Expedientes Criminales — dim_caso / fact_crimes."""
+"""Paquete: Gestión de Expedientes Criminales — detalle por case_number."""
 
 PACKAGE_ID = "expedientes_criminales"
-STATUS = "estructura_lista"

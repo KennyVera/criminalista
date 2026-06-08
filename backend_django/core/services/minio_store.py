@@ -66,6 +66,19 @@ class MinioParquetStore:
     def _object_key(self, collection: str) -> str:
         return f"{self.prefix}/{collection}.parquet"
 
+    def fact_crimes_consolidated_key(self) -> str:
+        return f"{self.prefix.rstrip('/')}/fact_crimes/consolidated/latest.parquet"
+
+    def has_consolidated_facts(self) -> bool:
+        try:
+            self._client.head_object(
+                Bucket=self.bucket,
+                Key=self.fact_crimes_consolidated_key(),
+            )
+            return True
+        except Exception:
+            return False
+
     def fact_crimes_glob(self) -> str:
         """Patron S3/DuckDB para hechos particionados o monolitico."""
         return f"{self.prefix}/fact_crimes/**/*.parquet"

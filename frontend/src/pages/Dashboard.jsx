@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -25,7 +25,7 @@ import {
 import { dashboardApi } from '../api/dashboard'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { canAccessDataCrud, canViewOperationalIndicators } from '../utils/roles'
+import { canAccessDataCrud, canViewDashboard, canViewInvestigacionProgress, canViewOperationalIndicators } from '../utils/roles'
 import { Badge, Button, Card, Spinner } from '../components/ui'
 
 function KpiCard({ label, value, sub, icon: Icon, accent = 'from-blue-600 to-indigo-600' }) {
@@ -81,6 +81,7 @@ export default function Dashboard() {
   const toast = useToast()
   const showCrud = canAccessDataCrud(user)
   const showIndicadores = canViewOperationalIndicators(user)
+  const canView = canViewDashboard(user)
 
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -95,8 +96,11 @@ export default function Dashboard() {
   const [filtered, setFiltered] = useState(null)
   const [filtering, setFiltering] = useState(false)
   const [optionsLoading, setOptionsLoading] = useState(true)
+  const [ranking, setRanking] = useState([])
+  const [rankingLoading, setRankingLoading] = useState(false)
 
   const loadOverview = useCallback(async () => {
+    if (!canView) return
     setLoading(true)
     try {
       const data = await dashboardApi.overview()
@@ -106,11 +110,50 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [toast, canView])
 
   useEffect(() => {
-    loadOverview()
-  }, [loadOverview])
+    if (canView) loadOverview()
+  }, [loadOverview, canView])
+
+  const loadRanking = useCallback(async () => {
+    if (!canView) return
+    setRankingLoading(true)
+    try {
+      const res = await dashboardApi.rankingDetectives()
+      setRanking(res.items || [])
+      if (res.tasa_resolucion) {
+        setStats((prev) =>
+          prev
+            ? {
+                ...prev,
+                operational_indicators: {
+                  ...(prev.operational_indicators || {}),
+                  tasa_resolucion: res.tasa_resolucion,
+                },
+              }
+            : prev
+        )
+      }
+    } catch (e) {
+      toast.error('Error', e.message || 'No se pudo actualizar el ranking')
+    } finally {
+      setRankingLoading(false)
+    }
+  }, [toast, canView])
+
+  useEffect(() => {
+    if (tab !== 'ranking' || !canView) return
+    loadRanking()
+    const timer = setInterval(loadRanking, 15000)
+    return () => clearInterval(timer)
+  }, [tab, canView, loadRanking])
+
+  useEffect(() => {
+    if (stats?.detective_ranking?.length) {
+      setRanking(stats.detective_ranking)
+    }
+  }, [stats?.detective_ranking])
 
   const fetchFilteredStats = useCallback(async (params, { silent = false } = {}) => {
     setFiltering(true)
@@ -128,6 +171,7 @@ export default function Dashboard() {
   }, [toast])
 
   useEffect(() => {
+    if (!canView) return
     let cancelled = false
     ;(async () => {
       setOptionsLoading(true)
@@ -146,7 +190,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [fetchFilteredStats, toast])
+  }, [fetchFilteredStats, toast, canView])
 
   const applyFilters = async () => {
     await fetchFilteredStats(filterDraft)
@@ -167,6 +211,13 @@ export default function Dashboard() {
     [showIndicadores]
   )
 
+  if (!canView) {
+    if (canViewInvestigacionProgress(user)) {
+      return <Navigate to="/investigaciones/progreso" replace />
+    }
+    return <Navigate to="/tabla/dim_caso" replace />
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -180,7 +231,6 @@ export default function Dashboard() {
   const byDistrict = stats?.crimes_by_district?.items || []
   const byType = stats?.crimes_by_type || []
   const heatMap = stats?.heat_map || []
-  const ranking = stats?.detective_ranking || []
   const operational = stats?.operational_indicators || {}
   const trend = operational?.tendencias_delictivas || []
 
@@ -552,12 +602,17 @@ export default function Dashboard() {
 
       {tab === 'ranking' && (
         <Card className="border-0 bg-white/90 p-6 shadow-xl backdrop-blur">
-          <h3 className="font-semibold text-slate-900">Ranking de detectives</h3>
-          <p className="text-sm text-slate-500">Por casos asignados y resueltos</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-semibold text-slate-900">Ranking de detectives</h3>
+              <p className="text-sm text-slate-500">Por casos asignados y resueltos · actualización automática</p>
+            </div>
+            {rankingLoading && <Spinner className="h-5 w-5" />}
+          </div>
           <div className="mt-6 space-y-3">
             {ranking.map((d) => (
               <div
-                key={d.detective}
+                key={d.fk_detective ?? d.detective}
                 className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3"
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
@@ -575,8 +630,8 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {ranking.length === 0 && (
-              <p className="text-sm text-slate-500">Sin datos de investigadores asignados en dim_caso.</p>
+            {ranking.length === 0 && !rankingLoading && (
+              <p className="text-sm text-slate-500">Sin detectives con casos asignados activos.</p>
             )}
           </div>
         </Card>

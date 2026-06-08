@@ -54,6 +54,13 @@ class PocketBaseClient:
     def auth_admin(self, email: str | None = None, password: str | None = None) -> str:
         email = email or settings.POCKETBASE_ADMIN_EMAIL
         password = password or settings.POCKETBASE_ADMIN_PASSWORD
+        if not password:
+            raise PocketBaseError(
+                "POCKETBASE_ADMIN_PASSWORD vacío. Configúralo en backend_django/.env "
+                "(y reinicia el contenedor celery-worker).",
+                401,
+                None,
+            )
         data = self._handle(
             self._client.post(
                 "/api/collections/_superusers/auth-with-password",
@@ -101,6 +108,69 @@ class PocketBaseClient:
                 json=body,
             )
         )
+
+    def create_records_batch(
+        self,
+        collection: str,
+        bodies: list[dict],
+    ) -> tuple[int, int, list[dict]]:
+        """
+        Inserta varios registros. Usa /api/batches si existe (PB >= 0.23);
+        si no, inserción secuencial con el mismo cliente autenticado.
+        """
+        if not bodies:
+            return 0, 0, []
+
+        response = self._client.post(
+            "/api/batches",
+            headers=self.headers,
+            json={
+                "requests": [
+                    {
+                        "method": "POST",
+                        "url": f"/api/collections/{collection}/records",
+                        "body": body,
+                    }
+                    for body in bodies
+                ]
+            },
+        )
+        if response.status_code == 404:
+            return self._create_records_sequential(collection, bodies)
+
+        data = self._handle(response)
+        results = data if isinstance(data, list) else data.get("results", data)
+        created = 0
+        errors = 0
+        samples: list[dict] = []
+        for i, item in enumerate(results):
+            status_code = int(item.get("status", 500))
+            if 200 <= status_code < 300:
+                created += 1
+                body = item.get("body") or {}
+                if len(samples) < 8:
+                    samples.append({**bodies[i], "pb_id": body.get("id")})
+            else:
+                errors += 1
+        return created, errors, samples
+
+    def _create_records_sequential(
+        self,
+        collection: str,
+        bodies: list[dict],
+    ) -> tuple[int, int, list[dict]]:
+        created = 0
+        errors = 0
+        samples: list[dict] = []
+        for body in bodies:
+            try:
+                record = self.create_record(collection, body)
+                created += 1
+                if len(samples) < 8:
+                    samples.append({**body, "pb_id": record.get("id")})
+            except PocketBaseError:
+                errors += 1
+        return created, errors, samples
 
     def get_record(self, collection: str, record_id: str, *, expand: str | None = None) -> dict:
         params = {}

@@ -25,6 +25,9 @@ class Command(BaseCommand):
             self.stdout.write(f"  - {t}.parquet")
         self.stdout.write("")
         self.stdout.write(self.style.WARNING("Credenciales de acceso:"))
-        self.stdout.write(f"  Email:    {result['email']}")
-        self.stdout.write(f"  Password: {result['password']}")
-        self.stdout.write(f"  Placa:    {result['numero_placa']}")
+        for cred in result.get("credentials", []):
+            self.stdout.write(f"  [{cred['rol']}]")
+            self.stdout.write(f"    Email:    {cred['email']}")
+            self.stdout.write(f"    Password: {cred['password']}")
+            self.stdout.write(f"    Placa:    {cred['numero_placa']}")
+            self.stdout.write("")

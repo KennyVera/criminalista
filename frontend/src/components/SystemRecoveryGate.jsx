@@ -11,6 +11,9 @@ import DashboardLayout from '../layouts/DashboardLayout'
 import Dashboard from '../pages/Dashboard'
 import CollectionCrud from '../pages/CollectionCrud'
 import GenerateDataPage from '../pages/GenerateDataPage'
+import AsignarDetectivePage from '../pages/investigaciones/AsignarDetectivePage'
+import ProgresoInvestigacionPage from '../pages/investigaciones/ProgresoInvestigacionPage'
+import ExpedienteDetailPage from '../pages/expedientes/ExpedienteDetailPage'
 import ActiveSessionsPage from '../pages/ActiveSessionsPage'
 import AdminUsersPage from '../pages/admin/AdminUsersPage'
 import AdminPermissionsPage from '../pages/admin/AdminPermissionsPage'
@@ -39,6 +42,9 @@ function NormalAppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="tabla/:slug" element={<CollectionCrud />} />
         <Route path="generar-datos" element={<GenerateDataPage />} />
+        <Route path="investigaciones/asignar" element={<AsignarDetectivePage />} />
+        <Route path="investigaciones/progreso" element={<ProgresoInvestigacionPage />} />
+        <Route path="expedientes/:numeroCaso" element={<ExpedienteDetailPage />} />
         <Route path="seguridad/sesiones-activas" element={<ActiveSessionsPage />} />
         <Route path="admin/usuarios" element={<AdminUsersPage />} />
         <Route path="admin/permisos" element={<AdminPermissionsPage />} />

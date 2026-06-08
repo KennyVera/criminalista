@@ -16,7 +16,7 @@ import pandas as pd
 
 from core.etl.dim_enrichment import enrich_all_dimensions
 from core.etl.fast_keys import as_merge_str, composite_key, map_foreign_key
-from core.etl.parquet_partition import write_partitioned_fact_crimes
+from core.etl.consolidated_upload import write_consolidated_fact_crimes
 from core.etl.pb_fetch import fetch_crimes_220k_parallel
 from core.services.minio_store import DIM_COLLECTIONS, MinioParquetStore
 from core.services.pocketbase import PocketBaseClient
@@ -227,19 +227,25 @@ def run_etl_pb_to_minio(
         _emit(on_progress, phase="upload", percent=pct, message=f"Dimension {name} lista.")
 
     _abort_if_cancelled()
-    partition_meta = write_partitioned_fact_crimes(store, fact_df, dims)
-    summary["collections"]["fact_crimes"] = partition_meta["rows"]
-    summary["fact_partitioning"] = partition_meta
+    consolidated_meta = write_consolidated_fact_crimes(store, fact_df, dims)
+    summary["collections"]["fact_crimes"] = consolidated_meta["rows"]
+    summary["fact_consolidated"] = consolidated_meta
     summary["elapsed_seconds"] = round(time.time() - t0, 2)
 
     _emit(on_progress, phase="done", percent=100, message="ETL completado.")
+
+    from packages.dashboard_analitica.services.summary_materializer import (
+        materialize_dashboard_summary,
+    )
+
+    materialize_dashboard_summary()
 
     return {
         "success": True,
         "message": (
             f"ETL completado en {summary['elapsed_seconds']}s: {len(raw_df)} filas crudas -> "
-            f"{partition_meta['rows']} hechos en {partition_meta['partitions']} particiones "
-            f"(year/month) y {len(DIM_COLLECTIONS)} dimensiones en MinIO."
+            f"{consolidated_meta['rows']} hechos en Parquet consolidado y "
+            f"{len(DIM_COLLECTIONS)} dimensiones en MinIO."
         ),
         **summary,
     }

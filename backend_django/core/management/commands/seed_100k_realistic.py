@@ -46,6 +46,27 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING(f"Insertando {count:,} registros realistas…"))
         try:
+            from core.services.faker_realistic import resolve_gap_fill_weights
+
+            gap = resolve_gap_fill_weights()
+            self.stdout.write(
+                f"  Gap-fill ({gap['source']}, meta ~{gap['target_year_volume']:,}): "
+                f"{len(gap['sparse_years'])} años bajo meta"
+            )
+            top_gaps = sorted(
+                gap.get("year_gaps_to_target", {}).items(),
+                key=lambda x: int(x[1]),
+                reverse=True,
+            )[:8]
+            if top_gaps:
+                self.stdout.write(
+                    "  Mayor déficit: "
+                    + ", ".join(f"{y} (+{int(g):,})" for y, g in top_gaps)
+                )
+        except Exception as exc:
+            self.stdout.write(self.style.WARNING(f"  Gap-fill preview omitido: {exc}"))
+
+        try:
             result = run_realistic_seed_100k(count=count, workers=workers, on_progress=progress)
         except Exception as exc:
             raise CommandError(str(exc)) from exc

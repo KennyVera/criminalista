@@ -20,6 +20,18 @@ DEFAULT_PERMISOS = [
     ("catalogos.gestionar", "Catálogos de delitos", "admin", "IUCR y tipos"),
     ("zonas.gestionar", "Zonas geográficas", "admin", "Áreas operativas"),
     ("auditoria.ver", "Ver auditoría", "auditoria", "Logs de trazabilidad"),
+    (
+        "asignaciones.gestionar",
+        "Gestionar asignaciones",
+        "investigaciones",
+        "Asignar, reasignar y remover detectives en casos",
+    ),
+    (
+        "asignaciones.progreso",
+        "Consultar progreso investigación",
+        "investigaciones",
+        "Ver expedientes asignados y avance",
+    ),
     ("dashboard.ver", "Ver dashboard analítico", "analitica", "KPIs y gráficas ejecutivas"),
     (
         "dashboard.indicadores",
@@ -100,8 +112,24 @@ def seed_admin_tables(*, reset: bool = False) -> dict[str, Any]:
     all_codes = [p[0] for p in DEFAULT_PERMISOS]
     for fk_rol, codes in [
         (1, all_codes),
-        (2, ["dashboard.ver"]),
-        (3, ["dashboard.ver", "facts.crud", "raw.ver", "evidencias.gestionar"]),
+        (
+            2,
+            [
+                "dashboard.ver",
+                "asignaciones.gestionar",
+                "asignaciones.progreso",
+            ],
+        ),
+        (
+            3,
+            [
+                "dashboard.ver",
+                "facts.crud",
+                "raw.ver",
+                "evidencias.gestionar",
+                "asignaciones.progreso",
+            ],
+        ),
         (4, ["dashboard.ver", "raw.ver"]),
         (
             5,

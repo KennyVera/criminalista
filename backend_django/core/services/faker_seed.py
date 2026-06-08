@@ -24,8 +24,9 @@ except ImportError:
 MIN_DIM_RECORDS = 20
 SAMPLE_IDS_PER_DIM = 400
 MAX_FACTS_PER_REQUEST = 500_000
-MAX_BATCH_SIZE = 2000
-BULK_INSERT_CHUNK = 2000
+MAX_BATCH_SIZE = 5000
+BULK_INSERT_CHUNK = 5000
+PB_API_BATCH_SIZE = 100
 DEFAULT_WORKERS = 32
 
 CHICAGO_CRIME_TYPES = [
@@ -153,6 +154,71 @@ def _create_one_generated(collection: str) -> tuple[bool, dict | None, str | Non
     return ok, None, err
 
 
+def bulk_create_records(
+    collection: str,
+    count: int,
+    *,
+    body_factory: Callable[[], dict] | None = None,
+    on_progress: ProgressCallback | None = None,
+    workers: int = DEFAULT_WORKERS,
+) -> dict[str, Any]:
+    """
+    Genera e inserta en chunks de BULK_INSERT_CHUNK (inserción paralela por registro).
+    Compatible con PocketBase sin endpoint /api/batches (imagen muchobien).
+    """
+    if count < 1:
+        raise ValueError("count debe ser >= 1")
+
+    factory = body_factory or (lambda: _gen_crimes_220k(_fake()))
+    created = 0
+    errors = 0
+    samples: list[dict] = []
+    error_messages: list[str] = []
+    t0 = time.time()
+
+    for offset in range(0, count, BULK_INSERT_CHUNK):
+        chunk_n = min(BULK_INSERT_CHUNK, count - offset)
+        bodies = [factory() for _ in range(chunk_n)]
+
+        def chunk_progress(state: dict[str, Any]) -> None:
+            if not on_progress:
+                return
+            on_progress(
+                {
+                    "done": offset + state["done"],
+                    "total": count,
+                    "created": created + state["created"],
+                    "errors": errors + state["errors"],
+                    "percent": round(100 * (offset + state["done"]) / count, 1),
+                    "last_sample": state.get("last_sample"),
+                }
+            )
+
+        result = _bulk_create(
+            collection,
+            bodies,
+            workers=workers,
+            on_progress=chunk_progress,
+        )
+        created += result["created"]
+        errors += result["errors"]
+        for s in result.get("samples", []):
+            if len(samples) < 8:
+                samples.append(s)
+        for msg in result.get("error_messages", []):
+            if len(error_messages) < 5 and msg not in error_messages:
+                error_messages.append(msg)
+
+    elapsed = round(time.time() - t0, 2)
+    return {
+        "created": created,
+        "errors": errors,
+        "samples": samples,
+        "error_messages": error_messages,
+        "elapsed_seconds": elapsed,
+    }
+
+
 def _bulk_create(
     collection: str,
     bodies: list[dict | None],
@@ -232,7 +298,7 @@ def run_faker_seed_batch(
         raise ValueError(f"Máximo {MAX_BATCH_SIZE} registros por lote")
 
     t0 = time.time()
-    result = _bulk_create("crimes_220k", [None] * count, workers=workers)
+    result = bulk_create_records("crimes_220k", count)
     elapsed = round(time.time() - t0, 2)
 
     created = result["created"]
@@ -280,10 +346,9 @@ def run_faker_seed(
         raise ValueError(f"Máximo {MAX_FACTS_PER_REQUEST} registros por solicitud")
 
     t0 = time.time()
-    result = _bulk_create(
+    result = bulk_create_records(
         "crimes_220k",
-        [None] * raw_count,
-        workers=workers,
+        raw_count,
         on_progress=on_progress,
     )
     elapsed = round(time.time() - t0, 2)

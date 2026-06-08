@@ -67,6 +67,9 @@ services:
       dockerfile: Dockerfile.worker
     container_name: crimetrack-celery
     restart: unless-stopped
+    # Mismas credenciales que Django local (backend_django/.env)
+    env_file:
+      - ../backend_django/.env
     environment:
       DJANGO_SETTINGS_MODULE: crimetrack.settings
       REDIS_URL: redis://redis:6379/0
@@ -78,8 +81,6 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_change_me}
       MINIO_BUCKET: ${MINIO_BUCKET:-crimetrack-evidence}
-      POCKETBASE_ADMIN_EMAIL: ${POCKETBASE_ADMIN_EMAIL:-admin@crimetrack.local}
-      POCKETBASE_ADMIN_PASSWORD: ${POCKETBASE_ADMIN_PASSWORD:-}
     volumes:
       - ../backend_django:/app
     depends_on:

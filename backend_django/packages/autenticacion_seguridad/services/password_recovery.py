@@ -9,6 +9,9 @@ from django.core.cache import cache
 from packages.autenticacion_seguridad.services.auth_service import AuthError, AuthService
 from packages.autenticacion_seguridad.services.email_service import send_password_reset_code
 from packages.autenticacion_seguridad.services.passwords import hash_password
+from packages.autenticacion_seguridad.services.security_policy import (
+    validate_password_strength,
+)
 
 
 class PasswordRecoveryService:
@@ -66,8 +69,10 @@ class PasswordRecoveryService:
         }
 
     def reset_password(self, email: str, code: str, new_password: str) -> dict[str, Any]:
-        if len(new_password) < 8:
-            raise AuthError("La nueva contraseña debe tener al menos 8 caracteres")
+        try:
+            validate_password_strength(new_password)
+        except ValueError as exc:
+            raise AuthError(str(exc)) from exc
 
         key = self._cache_key(email)
         payload = cache.get(key)

@@ -6,7 +6,6 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.services.pocketbase import PocketBaseError
 from packages.dashboard_analitica.permissions import IsAnalistaCriminalJWT, IsDashboardViewerJWT
 from packages.dashboard_analitica.services.dashboard_service import DashboardService
 
@@ -27,8 +26,6 @@ class DashboardOverviewView(APIView):
     def get(self, request):
         try:
             return Response(DashboardService().overview())
-        except PocketBaseError as exc:
-            return Response({"error": str(exc)}, status=502)
         except Exception as exc:
             return _minio_error(exc)
 

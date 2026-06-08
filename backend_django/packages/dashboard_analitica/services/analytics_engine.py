@@ -15,7 +15,6 @@ from core.services.analytics_service import (
     invalidate_dashboard_cache,
 )
 from core.services.minio_store import DIM_COLLECTIONS
-from core.services.pocketbase import PocketBaseClient
 
 __all__ = [
     "DashboardAnalyticsEngine",
@@ -252,37 +251,12 @@ class DashboardAnalyticsEngine(AnalyticsService):
         return items
 
     def detective_ranking(self, *, limit: int = 10) -> list[dict[str, Any]]:
-        con = self.connection()
-        caso = self._dim_parquet("dim_caso")
-        sql = f"""
-            SELECT
-                CAST(c.investigador_asignado AS VARCHAR) AS detective,
-                COUNT(*)::BIGINT AS casos_asignados,
-                SUM(
-                    CASE
-                        WHEN LOWER(CAST(c.estado_caso AS VARCHAR)) IN (
-                            'cerrado', 'resuelto', 'closed', 'resuelta', 'cerrada'
-                        ) THEN 1 ELSE 0
-                    END
-                )::BIGINT AS casos_resueltos
-            FROM read_parquet('{caso}') AS c
-            WHERE c.investigador_asignado IS NOT NULL
-              AND TRIM(CAST(c.investigador_asignado AS VARCHAR)) != ''
-            GROUP BY c.investigador_asignado
-            ORDER BY casos_resueltos DESC, casos_asignados DESC
-            LIMIT {int(limit)}
-        """
+        from packages.dashboard_analitica.services.detective_ranking_service import (
+            detective_ranking_from_assignments,
+        )
+
         try:
-            df = con.execute(sql).fetchdf()
-            rows = df.to_dict(orient="records")
-            for i, row in enumerate(rows, start=1):
-                row["rank"] = i
-                asignados = int(row.get("casos_asignados", 0) or 0)
-                resueltos = int(row.get("casos_resueltos", 0) or 0)
-                row["tasa_resolucion"] = round(
-                    (resueltos / asignados * 100) if asignados else 0, 1
-                )
-            return rows
+            return detective_ranking_from_assignments(limit=limit)
         except Exception:
             return []
 
@@ -322,17 +296,17 @@ class DashboardAnalyticsEngine(AnalyticsService):
         }
 
     def build_dashboard_payload(self) -> dict[str, Any]:
+        """Construye payload completo desde MinIO OLAP (sin PocketBase)."""
         t0 = time.perf_counter()
-        with PocketBaseClient() as pb:
-            pb.auth_admin()
-            raw_count = pb.count_records("crimes_220k")
+        fact_count = self.count_fact_crimes()
 
         totals = {
-            "crimes_220k": raw_count,
-            "fact_crimes": self.count_fact_crimes(),
+            "crimes_220k": fact_count,
+            "fact_crimes": fact_count,
             "dim_caso": self.count_dimension("dim_caso"),
             "dim_tipo_crimen": self.count_dimension("dim_tipo_crimen"),
             "dim_distrito_policial": self.count_dimension("dim_distrito_policial"),
+            "source": "minio_olap",
         }
         dim_counts = self.dimension_counts()
         recent_facts = self.recent_facts(limit=8)
@@ -354,8 +328,8 @@ class DashboardAnalyticsEngine(AnalyticsService):
             "operational_indicators": operational,
             "service": "CrimeTrack Analytics Corp",
             "architecture": {
-                "pocketbase": ["crimes_220k"],
-                "minio": "Parquet particionado (year/month) + DuckDB",
+                "pocketbase": "OLTP — no consultado en dashboard",
+                "minio": "Parquet OLAP + app_dashboard_summary",
                 "cache_ttl_seconds": DASHBOARD_CACHE_TTL,
             },
             "performance": {
@@ -366,15 +340,6 @@ class DashboardAnalyticsEngine(AnalyticsService):
 
 
 def get_cached_dashboard_stats() -> dict[str, Any]:
-    from django.core.cache import cache
+    from packages.dashboard_analitica.services.dashboard_service import DashboardService
 
-    cached = cache.get(DASHBOARD_CACHE_KEY)
-    if cached is not None:
-        cached = dict(cached)
-        cached["from_cache"] = True
-        return cached
-
-    payload = DashboardAnalyticsEngine().build_dashboard_payload()
-    payload["from_cache"] = False
-    cache.set(DASHBOARD_CACHE_KEY, payload, DASHBOARD_CACHE_TTL)
-    return payload
+    return DashboardService().overview()

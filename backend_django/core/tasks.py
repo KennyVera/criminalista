@@ -55,14 +55,20 @@ def generate_fake_crimes_task(self, total_count: int) -> dict[str, Any]:
         result = bulk_insert_crimes_220k(
             total_count, on_progress=on_progress, workers=32
         )
+        failed = not result.get("success")
         payload = {
-            "status": "completed" if result.get("success") else "failed",
+            "status": "failed" if failed else "completed",
             "task_id": task_id,
             "percent": 100,
             "done": total_count,
             "total": total_count,
+            "created": result.get("raw", {}).get("created", result.get("inserted_facts", 0)),
+            "errors": result.get("raw", {}).get("errors", 0),
             "result": result,
         }
+        if failed:
+            msgs = result.get("error_messages") or []
+            payload["error"] = msgs[0] if msgs else result.get("message", "No se insertó ningún registro")
         _set_progress(task_id, payload)
         invalidate_dashboard_cache()
         return payload
@@ -104,21 +110,37 @@ def generate_realistic_crimes_task(self, total_count: int) -> dict[str, Any]:
         result = bulk_insert_realistic_crimes(
             total_count, on_progress=on_progress, workers=32
         )
+        failed = not result.get("success")
         payload = {
-            "status": "completed" if result.get("success") else "failed",
+            "status": "failed" if failed else "completed",
             "task_id": task_id,
             "percent": 100,
             "done": total_count,
             "total": total_count,
             "realistic": True,
+            "created": result.get("created", 0),
+            "errors": result.get("errors", 0),
             "result": result,
         }
+        if failed:
+            msgs = result.get("error_messages") or []
+            payload["error"] = msgs[0] if msgs else result.get("message", "No se insertó ningún registro")
         _set_progress(task_id, payload)
         return payload
     except Exception as exc:
         payload = {"status": "failed", "task_id": task_id, "error": str(exc)}
         _set_progress(task_id, payload)
         raise
+
+
+@shared_task(name="core.refresh_dashboard_summary")
+def refresh_dashboard_summary_task() -> dict[str, Any]:
+    """Cron/Celery beat: actualiza app_dashboard_summary desde MinIO OLAP."""
+    from packages.dashboard_analitica.services.summary_materializer import (
+        materialize_dashboard_summary,
+    )
+
+    return materialize_dashboard_summary()
 
 
 @shared_task(name="core.run_scheduled_backups")
@@ -171,6 +193,11 @@ def run_etl_to_minio_task(self, export_raw_copy: bool = True) -> dict[str, Any]:
             PROGRESS_TTL,
         )
         invalidate_dashboard_cache()
+        from packages.dashboard_analitica.services.summary_materializer import (
+            materialize_dashboard_summary,
+        )
+
+        materialize_dashboard_summary()
         return {"status": "completed", "task_id": task_id, "result": result}
     except Exception as exc:
         cache.set(

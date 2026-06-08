@@ -14,8 +14,10 @@ from core.views_api import (
     GenerateFakeDataTaskStatusView,
     GenerateFakeDataView,
     RelationOptionsView,
+    EtlStatusAliasView,
     EtlTaskStatusView,
     RunEtlToMinioView,
+    UnifiedJobStatusView,
 )
 
 urlpatterns = [
@@ -56,6 +58,8 @@ urlpatterns = [
     ),
     path("etl/pb-to-minio/", RunEtlToMinioView.as_view(), name="etl-pb-to-minio"),
     path("etl/status/<str:task_id>/", EtlTaskStatusView.as_view(), name="etl-task-status"),
+    path("etl-status/<str:task_id>/", EtlStatusAliasView.as_view(), name="etl-status-alias"),
+    path("jobs/status/<str:task_id>/", UnifiedJobStatusView.as_view(), name="job-status"),
     path(
         "collections/<str:collection>/records/",
         CollectionRecordsView.as_view(),
