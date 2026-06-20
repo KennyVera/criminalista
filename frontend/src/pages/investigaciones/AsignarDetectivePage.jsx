@@ -10,6 +10,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Shield,
+  Users,
+  Briefcase,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { asignacionesApi } from '../../api/asignaciones'
@@ -166,27 +169,37 @@ export default function AsignarDetectivePage() {
   if (!allowed) return <Navigate to="/" replace />
 
   return (
-    <section className="mx-auto max-w-7xl space-y-6">
-      <header>
-        <h2 className="text-xl font-bold text-slate-900">Asignar detective a caso</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Explore el catálogo de casos sin memorizar el número, filtre por estado o prioridad y
-          genere informes PDF con estructura profesional (Ecuador).
-        </p>
+    <section className="mx-auto max-w-7xl space-y-8">
+      <header className="page-header">
+        <div className="flex items-start gap-4">
+          <div className="rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 p-3 text-white shadow-lg shadow-indigo-500/25">
+            <Shield className="h-6 w-6" />
+          </div>
+          <div>
+            <h2>Asignación de detectives</h2>
+            <p>
+              Gestione la distribución de casos entre el equipo investigativo. Filtre por estado,
+              prioridad o asignación y genere informes oficiales en PDF.
+            </p>
+          </div>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-900">Detectives y carga laboral</h3>
+        <Card className="glass-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-indigo-600" />
+              <h3 className="font-semibold text-slate-900">Equipo investigativo</h3>
+            </div>
             <Button
               type="button"
               variant="secondary"
-              className="!px-2 !py-1"
+              className="!px-2.5 !py-1.5"
               onClick={loadDetectives}
               disabled={loadingDet}
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={`h-4 w-4 ${loadingDet ? 'animate-spin' : ''}`} />
             </Button>
           </div>
           {loadingDet ? (
@@ -194,14 +207,14 @@ export default function AsignarDetectivePage() {
               <Spinner />
             </div>
           ) : (
-            <ul className="max-h-80 space-y-2 overflow-y-auto">
+            <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
               {detectives.map((d) => (
                 <li
                   key={d.id_usuario}
-                  className={`rounded-xl border px-3 py-2 text-sm ${
+                  className={`rounded-xl border px-3 py-2.5 text-sm transition-all ${
                     String(fkDetective) === String(d.id_usuario)
-                      ? 'border-brand-500 bg-brand-50'
-                      : 'border-slate-100'
+                      ? 'border-indigo-400 bg-indigo-50/80 shadow-md shadow-indigo-500/10 ring-1 ring-indigo-200'
+                      : 'border-slate-200/80 hover:border-indigo-200 hover:bg-slate-50/80'
                   }`}
                 >
                   <button
@@ -211,10 +224,14 @@ export default function AsignarDetectivePage() {
                   >
                     <p className="font-medium text-slate-900">{d.etiqueta}</p>
                     <p className="text-xs text-slate-500">{d.email}</p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <Badge tone={d.disponible ? 'green' : 'red'}>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <span
+                        className={`status-badge ${
+                          d.disponible ? 'status-badge--active' : 'status-badge--warning'
+                        }`}
+                      >
                         {d.casos_activos} casos activos
-                      </Badge>
+                      </span>
                     </div>
                   </button>
                 </li>
@@ -223,12 +240,16 @@ export default function AsignarDetectivePage() {
           )}
         </Card>
 
-        <Card className="p-4">
+        <Card className="glass-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <UserPlus className="h-5 w-5 text-indigo-600" />
+            <h3 className="font-semibold text-slate-900">Nueva asignación</h3>
+          </div>
           <form onSubmit={handleAsignar} className="space-y-4">
             <label className="block text-sm font-medium text-slate-700">
-              Buscar caso (opcional)
-              <div className="relative mt-1">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              Buscar caso
+              <div className="relative mt-1.5">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="search"
                   value={searchQ}
@@ -237,7 +258,7 @@ export default function AsignarDetectivePage() {
                     setPage(1)
                   }}
                   placeholder="Número, tipo de delito, distrito…"
-                  className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+                  className="input-field py-2.5 pl-9"
                 />
               </div>
             </label>
@@ -251,7 +272,7 @@ export default function AsignarDetectivePage() {
                     setFiltroEstado(e.target.value)
                     setPage(1)
                   }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="input-field mt-1.5"
                 >
                   {ESTADOS.map((e) => (
                     <option key={e || 'all'} value={e}>
@@ -268,7 +289,7 @@ export default function AsignarDetectivePage() {
                     setFiltroPrioridad(e.target.value)
                     setPage(1)
                   }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="input-field mt-1.5"
                 >
                   {PRIORIDADES.map((p) => (
                     <option key={p || 'all'} value={p}>
@@ -287,7 +308,7 @@ export default function AsignarDetectivePage() {
                   setFiltroAsignacion(e.target.value)
                   setPage(1)
                 }}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                className="input-field mt-1.5"
               >
                 {FILTROS_ASIGNACION.map((f) => (
                   <option key={f.value} value={f.value}>
@@ -298,15 +319,15 @@ export default function AsignarDetectivePage() {
             </label>
 
             {selectedCaso && (
-              <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-900">
+              <p className="rounded-xl border border-indigo-200/60 bg-indigo-50/80 px-3 py-2.5 text-xs text-indigo-900">
                 Caso seleccionado: <strong>{selectedCaso.case_number}</strong>
                 {selectedCaso.primary_type ? ` — ${selectedCaso.primary_type}` : ''}
               </p>
             )}
 
             {selectedCaso?.asignacion_activa && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Este caso ya tiene detective. Al guardar se <strong>reasignará</strong>.
+              <p className="rounded-xl border border-amber-200/60 bg-amber-50/80 px-3 py-2.5 text-xs text-amber-900">
+                Este caso ya tiene detective asignado. Al guardar se <strong>reasignará</strong>.
               </p>
             )}
 
@@ -316,11 +337,12 @@ export default function AsignarDetectivePage() {
                 value={observaciones}
                 onChange={(e) => setObservaciones(e.target.value)}
                 rows={2}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Instrucciones o contexto para el detective…"
+                className="input-field mt-1.5"
               />
             </label>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 pt-1">
               <Button type="submit" disabled={busy || !fkCaso || !fkDetective}>
                 {selectedCaso?.asignacion_activa ? (
                   <>
@@ -345,12 +367,15 @@ export default function AsignarDetectivePage() {
         </Card>
       </div>
 
-      <Card className="overflow-hidden p-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+      <Card className="glass-card overflow-hidden p-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 bg-gradient-to-r from-slate-50/80 to-indigo-50/40 px-5 py-4">
           <div className="flex flex-wrap items-end gap-4">
-            <div>
-              <h3 className="font-semibold text-slate-900">Catálogo de casos</h3>
-              <p className="text-xs text-slate-500">{casosMeta.message}</p>
+            <div className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5 text-indigo-600" />
+              <div>
+                <h3 className="font-semibold text-slate-900">Registro de casos</h3>
+                <p className="text-xs text-slate-500">{casosMeta.message}</p>
+              </div>
             </div>
             <label className="text-xs font-medium text-slate-600">
               Mostrar
@@ -360,7 +385,7 @@ export default function AsignarDetectivePage() {
                   setFiltroAsignacion(e.target.value)
                   setPage(1)
                 }}
-                className="ml-2 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800"
+                className="input-field ml-2 !w-auto !py-1.5 text-sm"
               >
                 {FILTROS_ASIGNACION.map((f) => (
                   <option key={f.value} value={f.value}>
@@ -371,7 +396,7 @@ export default function AsignarDetectivePage() {
             </label>
           </div>
           <Button type="button" variant="secondary" className="!py-1.5" onClick={loadCasos}>
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={`h-4 w-4 ${loadingCasos ? 'animate-spin' : ''}`} />
             Actualizar
           </Button>
         </div>
@@ -382,23 +407,23 @@ export default function AsignarDetectivePage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3">N.º caso</th>
-                  <th className="px-4 py-3">Tipo delito</th>
-                  <th className="px-4 py-3">Distrito</th>
-                  <th className="px-4 py-3">Fecha hecho</th>
-                  <th className="px-4 py-3">Estado</th>
-                  <th className="px-4 py-3">Prioridad</th>
-                  <th className="px-4 py-3">Detective</th>
-                  <th className="px-4 py-3 text-right">Acciones</th>
+                  <th>N.º caso</th>
+                  <th>Tipo delito</th>
+                  <th>Distrito</th>
+                  <th>Fecha hecho</th>
+                  <th>Estado</th>
+                  <th>Prioridad</th>
+                  <th>Detective</th>
+                  <th className="text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {casos.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={8} className="py-12 text-center text-slate-500">
                       No hay casos con los filtros actuales.
                     </td>
                   </tr>
@@ -409,22 +434,24 @@ export default function AsignarDetectivePage() {
                       <tr
                         key={c.id}
                         onClick={() => selectCaso(c)}
-                        className={`cursor-pointer transition-colors hover:bg-slate-50 ${
-                          selected ? 'bg-brand-50/70 ring-1 ring-inset ring-brand-200' : ''
+                        className={`cursor-pointer ${
+                          selected
+                            ? 'bg-indigo-50/70 ring-1 ring-inset ring-indigo-200'
+                            : ''
                         }`}
                       >
-                        <td className="px-4 py-3 font-medium text-slate-900">{c.case_number}</td>
-                        <td className="max-w-[140px] truncate px-4 py-3 text-slate-600">
+                        <td className="font-medium text-slate-900">{c.case_number}</td>
+                        <td className="max-w-[140px] truncate text-slate-600">
                           {c.primary_type || '—'}
                         </td>
-                        <td className="px-4 py-3 text-slate-600">{c.district || '—'}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                        <td className="text-slate-600">{c.district || '—'}</td>
+                        <td className="whitespace-nowrap text-slate-600">
                           {c.fecha_hecho || c.fecha_reporte || '—'}
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           <Badge tone="slate">{c.estado_caso || '—'}</Badge>
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           <Badge
                             tone={
                               c.prioridad_caso === 'Crítica' || c.prioridad_caso === 'Alta'
@@ -435,10 +462,12 @@ export default function AsignarDetectivePage() {
                             {c.prioridad_caso || '—'}
                           </Badge>
                         </td>
-                        <td className="max-w-[120px] truncate px-4 py-3 text-slate-600">
-                          {c.detective_actual || 'Sin asignar'}
+                        <td className="max-w-[120px] truncate text-slate-600">
+                          {c.detective_actual || (
+                            <span className="status-badge status-badge--warning">Sin asignar</span>
+                          )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           <div
                             className="flex items-center justify-end gap-1"
                             onClick={(e) => e.stopPropagation()}
@@ -447,7 +476,7 @@ export default function AsignarDetectivePage() {
                               type="button"
                               variant="secondary"
                               className="!px-2 !py-1"
-                              title="Informe PDF Ecuador"
+                              title="Descargar informe PDF"
                               disabled={pdfBusy === c.case_number}
                               onClick={(e) => handlePdf(c.case_number, e)}
                             >
@@ -455,7 +484,7 @@ export default function AsignarDetectivePage() {
                             </Button>
                             <Link
                               to={`/expedientes/${encodeURIComponent(c.case_number)}`}
-                              className="inline-flex rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
+                              className="inline-flex rounded-xl border border-slate-200/80 p-1.5 text-slate-600 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
                               title="Abrir expediente"
                             >
                               <ExternalLink className="h-4 w-4" />
@@ -471,9 +500,10 @@ export default function AsignarDetectivePage() {
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+        <div className="flex items-center justify-between border-t border-slate-200/70 bg-slate-50/50 px-5 py-3">
           <p className="text-xs text-slate-500">
-            Página {casosMeta.page} de {casosMeta.totalPages} · {casosMeta.totalItems?.toLocaleString()} casos
+            Página {casosMeta.page} de {casosMeta.totalPages} ·{' '}
+            {casosMeta.totalItems?.toLocaleString()} casos
           </p>
           <div className="flex gap-2">
             <Button

@@ -2,28 +2,36 @@ import { Check, Info, AlertTriangle, X } from 'lucide-react'
 
 const STYLES = {
   success: {
-    border: 'border-emerald-500',
-    iconWrap: 'bg-emerald-500 text-white',
+    border: 'border-emerald-200/80',
+    bg: 'bg-emerald-50/90',
+    iconWrap: 'bg-emerald-500 text-white shadow-emerald-500/30',
     Icon: Check,
-    iconShape: 'rounded-full',
+    title: 'text-emerald-900',
+    message: 'text-emerald-700/80',
   },
   info: {
-    border: 'border-blue-500',
-    iconWrap: 'bg-blue-500 text-white',
+    border: 'border-brand-200/80',
+    bg: 'bg-brand-50/90',
+    iconWrap: 'bg-brand-600 text-white shadow-brand-600/30',
     Icon: Info,
-    iconShape: 'rounded-full',
+    title: 'text-brand-900',
+    message: 'text-brand-700/80',
   },
   warning: {
-    border: 'border-amber-400',
-    iconWrap: 'bg-amber-400 text-white',
+    border: 'border-amber-200/80',
+    bg: 'bg-amber-50/90',
+    iconWrap: 'bg-amber-500 text-white shadow-amber-500/30',
     Icon: AlertTriangle,
-    iconShape: 'rounded-full',
+    title: 'text-amber-900',
+    message: 'text-amber-700/80',
   },
   error: {
-    border: 'border-red-500',
-    iconWrap: 'bg-red-500 text-white',
+    border: 'border-red-200/80',
+    bg: 'bg-red-50/90',
+    iconWrap: 'bg-red-500 text-white shadow-red-500/30',
     Icon: X,
-    iconShape: 'rounded-md',
+    title: 'text-red-900',
+    message: 'text-red-700/80',
   },
 }
 
@@ -34,23 +42,23 @@ function ToastItem({ toast, onDismiss }) {
   return (
     <div
       role="alert"
-      className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border-2 bg-white p-4 shadow-lg ${cfg.border} animate-[toast-in_0.3s_ease-out]`}
+      className={`pointer-events-auto relative flex w-full max-w-sm items-start gap-3 rounded-2xl border ${cfg.border} ${cfg.bg} p-4 shadow-xl shadow-slate-900/10 backdrop-blur-md animate-[toast-in_0.3s_ease-out]`}
     >
       <div
-        className={`flex h-9 w-9 shrink-0 items-center justify-center ${cfg.iconShape} ${cfg.iconWrap}`}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-lg ${cfg.iconWrap}`}
       >
-        <Icon className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+        <Icon className="h-4 w-4" strokeWidth={2.5} aria-hidden />
       </div>
       <div className="min-w-0 flex-1 pr-6">
-        <p className="font-serif text-base font-bold text-slate-800">{toast.title}</p>
+        <p className={`text-sm font-semibold ${cfg.title}`}>{toast.title}</p>
         {toast.message ? (
-          <p className="mt-0.5 text-sm text-slate-500">{toast.message}</p>
+          <p className={`mt-0.5 text-sm ${cfg.message}`}>{toast.message}</p>
         ) : null}
       </div>
       <button
         type="button"
         onClick={() => onDismiss(toast.id)}
-        className="absolute right-3 top-3 cursor-pointer rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        className="absolute right-3 top-3 cursor-pointer rounded-lg p-1 text-slate-400 transition hover:bg-white/60 hover:text-slate-600"
         aria-label="Cerrar notificación"
       >
         <X className="h-4 w-4" />
@@ -69,9 +77,7 @@ export default function ToastContainer({ toasts, onDismiss }) {
       aria-relevant="additions"
     >
       {toasts.map((t) => (
-        <div key={t.id} className="relative">
-          <ToastItem toast={t} onDismiss={onDismiss} />
-        </div>
+        <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
     </div>
   )

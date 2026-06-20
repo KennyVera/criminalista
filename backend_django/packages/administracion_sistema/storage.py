@@ -98,18 +98,32 @@ class AdminMinioStore(MinioParquetStore):
         super().__init__()
         self.prefix = os.getenv("MINIO_ADMIN_PREFIX", "datasets/admin")
 
+    def _align_schema(self, name: str, df: pd.DataFrame) -> pd.DataFrame:
+        schema = SCHEMAS.get(name, [])
+        if not schema:
+            return df
+        df = df.copy()
+        for col in schema:
+            if col not in df.columns:
+                if col == "activo":
+                    df[col] = True
+                else:
+                    df[col] = ""
+        extras = [c for c in df.columns if c not in schema]
+        return df[schema + extras] if extras else df[schema]
+
     def read_table(self, name: str) -> pd.DataFrame:
         if name not in ADMIN_COLLECTIONS:
             raise ValueError(f"Tabla admin desconocida: {name}")
         df = self.read_df(name, use_cache=False)
         if df.empty:
             return pd.DataFrame(columns=SCHEMAS[name])
-        return df
+        return self._align_schema(name, df)
 
     def write_table(self, name: str, df: pd.DataFrame) -> None:
         if name not in ADMIN_COLLECTIONS:
             raise ValueError(f"Tabla admin desconocida: {name}")
-        self.write_df(name, df)
+        self.write_df(name, self._align_schema(name, df))
 
     def append_row(self, name: str, row: dict[str, Any]) -> dict[str, Any]:
         df = self.read_table(name)
@@ -123,7 +137,7 @@ class AdminMinioStore(MinioParquetStore):
     def update_row(self, name: str, row_id: int, updates: dict[str, Any]) -> dict[str, Any] | None:
         df = self.read_table(name)
         id_col = ID_COL[name]
-        mask = df[id_col] == row_id
+        mask = df[id_col].astype(int) == int(row_id)
         if not mask.any():
             return None
         for k, v in updates.items():

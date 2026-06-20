@@ -9,6 +9,7 @@ from typing import Any
 from celery import shared_task
 from django.core.cache import cache
 
+from core.cache.invalidation import invalidate_after_etl
 from core.services.analytics_service import invalidate_dashboard_cache
 from core.services.faker_bulk import bulk_insert_crimes_220k
 from core.services.faker_realistic import bulk_insert_realistic_crimes
@@ -70,7 +71,7 @@ def generate_fake_crimes_task(self, total_count: int) -> dict[str, Any]:
             msgs = result.get("error_messages") or []
             payload["error"] = msgs[0] if msgs else result.get("message", "No se insertó ningún registro")
         _set_progress(task_id, payload)
-        invalidate_dashboard_cache()
+        invalidate_after_etl(refresh_dashboard=False)
         return payload
     except Exception as exc:
         payload = {
@@ -192,13 +193,13 @@ def run_etl_to_minio_task(self, export_raw_copy: bool = True) -> dict[str, Any]:
             },
             PROGRESS_TTL,
         )
-        invalidate_dashboard_cache()
-        from packages.dashboard_analitica.services.summary_materializer import (
-            materialize_dashboard_summary,
-        )
-
-        materialize_dashboard_summary()
-        return {"status": "completed", "task_id": task_id, "result": result}
+        meta = invalidate_after_etl(refresh_dashboard=True)
+        return {
+            "status": "completed",
+            "task_id": task_id,
+            "result": result,
+            "cache_generation": meta["cache_generation"],
+        }
     except Exception as exc:
         cache.set(
             key,

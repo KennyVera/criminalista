@@ -322,4 +322,11 @@ class ExpedienteService:
         except Exception:
             pass
 
+        try:
+            from core.cache.invalidation import bump_cache_generation
+
+            bump_cache_generation()
+        except Exception:
+            pass
+
         return created

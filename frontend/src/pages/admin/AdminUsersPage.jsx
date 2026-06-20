@@ -6,6 +6,9 @@ import { adminApi } from '../../api/admin'
 import { Button, Card, Badge, Spinner, PasswordInput } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 
+const INPUT =
+  'w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100'
+
 const emptyForm = {
   nombres: '',
   apellidos: '',
@@ -107,22 +110,27 @@ export default function AdminUsersPage() {
       </AdminPageHeader>
 
       {formOpen && (
-        <Card className="mb-6 border-brand-200">
-          <form onSubmit={save} className="space-y-4">
-            <h3 className="font-semibold">{editing ? 'Editar usuario' : 'Nuevo usuario'}</h3>
+        <Card className="mb-6 border-brand-200/60 bg-gradient-to-br from-brand-50/40 to-white">
+          <form onSubmit={save} className="space-y-5">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <h3 className="text-base font-semibold text-slate-900">
+                {editing ? 'Editar usuario' : 'Nuevo usuario'}
+              </h3>
+              {editing && <Badge tone="blue">ID {editing.id_usuario}</Badge>}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <input
                 placeholder="Nombres"
                 value={form.nombres}
                 onChange={(e) => setForm({ ...form, nombres: e.target.value })}
-                className="rounded-xl border px-3 py-2 text-sm"
+                className={INPUT}
                 required
               />
               <input
                 placeholder="Apellidos"
                 value={form.apellidos}
                 onChange={(e) => setForm({ ...form, apellidos: e.target.value })}
-                className="rounded-xl border px-3 py-2 text-sm"
+                className={INPUT}
                 required
               />
               <input
@@ -130,20 +138,20 @@ export default function AdminUsersPage() {
                 placeholder="Email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="rounded-xl border px-3 py-2 text-sm"
+                className={INPUT}
                 required
               />
               <input
                 placeholder="Número placa"
                 value={form.numero_placa}
                 onChange={(e) => setForm({ ...form, numero_placa: e.target.value })}
-                className="rounded-xl border px-3 py-2 text-sm"
+                className={INPUT}
                 required
               />
               <select
                 value={form.fk_rol}
                 onChange={(e) => setForm({ ...form, fk_rol: e.target.value })}
-                className="rounded-xl border px-3 py-2 text-sm"
+                className={INPUT}
               >
                 {roles.map((r) => (
                   <option key={r.id_rol} value={r.id_rol}>
@@ -155,27 +163,33 @@ export default function AdminUsersPage() {
                 placeholder={editing ? 'Nueva contraseña (opcional)' : 'Contraseña'}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                inputClassName="rounded-xl border px-3 py-2 text-sm"
+                inputClassName="bg-slate-50/50"
                 required={!editing}
                 autoComplete={editing ? 'new-password' : 'new-password'}
               />
             </div>
             <div>
-              <p className="mb-2 text-sm font-medium text-slate-700">Gestionar permisos</p>
-              <div className="grid max-h-40 gap-2 overflow-y-auto sm:grid-cols-2">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Gestionar permisos
+              </p>
+              <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/50 p-3 sm:grid-cols-2">
                 {permisos.map((p) => (
-                  <label key={p.codigo} className="flex items-center gap-2 text-sm">
+                  <label
+                    key={p.codigo}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition hover:bg-white"
+                  >
                     <input
                       type="checkbox"
                       checked={selectedPerms.includes(p.codigo)}
                       onChange={() => togglePerm(p.codigo)}
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                     />
-                    {p.nombre}
+                    <span className="text-slate-700">{p.nombre}</span>
                   </label>
                 ))}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 border-t border-slate-100 pt-4">
               <Button type="submit">Guardar</Button>
               <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
                 Cancelar
@@ -185,35 +199,48 @@ export default function AdminUsersPage() {
         </Card>
       )}
 
-      <Card>
+      <Card className="overflow-hidden p-0">
         {loading ? (
-          <div className="flex justify-center py-12">
+          <div className="flex justify-center py-16">
             <Spinner />
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <thead className="border-b border-slate-200 bg-slate-50/80">
                 <tr>
-                  <th className="px-3 py-2">Usuario</th>
-                  <th className="px-3 py-2">Rol</th>
-                  <th className="px-3 py-2">Placa</th>
-                  <th className="px-3 py-2">Estado</th>
-                  <th className="px-3 py-2">Acciones</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Usuario
+                  </th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Rol
+                  </th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Placa
+                  </th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Estado
+                  </th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((u) => (
-                  <tr key={u.id_usuario} className="border-t">
-                    <td className="px-3 py-2">
-                      <p className="font-medium">
+                  <tr
+                    key={u.id_usuario}
+                    className="border-b border-slate-100 transition hover:bg-slate-50/60"
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-900">
                         {u.nombres} {u.apellidos}
                       </p>
                       <p className="text-xs text-slate-500">{u.email}</p>
                     </td>
-                    <td className="px-3 py-2">{u.nombre_rol}</td>
-                    <td className="px-3 py-2">{u.numero_placa}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3 text-slate-700">{u.nombre_rol}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{u.numero_placa}</td>
+                    <td className="px-4 py-3">
                       <Badge
                         tone={
                           u.estado_cuenta === 'Activa'
@@ -231,11 +258,11 @@ export default function AdminUsersPage() {
                         )}
                       </Badge>
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="flex gap-1">
+                    <td className="px-4 py-3">
+                      <div className="flex gap-0.5">
                         <button
                           type="button"
-                          className="rounded-lg p-2 hover:bg-slate-100"
+                          className="rounded-lg p-2 text-slate-500 transition hover:bg-brand-50 hover:text-brand-600"
                           onClick={() => openEdit(u)}
                           title="Editar"
                         >
@@ -243,7 +270,7 @@ export default function AdminUsersPage() {
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg p-2 hover:bg-slate-100"
+                          className="rounded-lg p-2 text-slate-500 transition hover:bg-amber-50 hover:text-amber-600"
                           onClick={async () => {
                             try {
                               const activa = u.estado_cuenta !== 'Activa'
@@ -260,7 +287,7 @@ export default function AdminUsersPage() {
                           title="Activar/desactivar"
                         >
                           {u.estado_cuenta === 'Activa' ? (
-                            <UserX className="h-4 w-4 text-amber-600" />
+                            <UserX className="h-4 w-4" />
                           ) : (
                             <UserCheck className="h-4 w-4 text-emerald-600" />
                           )}
@@ -268,7 +295,7 @@ export default function AdminUsersPage() {
                         {u.id_usuario !== 1 && (
                           <button
                             type="button"
-                            className="rounded-lg p-2 hover:bg-red-50"
+                            className="rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600"
                             onClick={async () => {
                               if (!confirm('¿Eliminar usuario?')) return
                               try {
@@ -281,7 +308,7 @@ export default function AdminUsersPage() {
                             }}
                             title="Eliminar"
                           >
-                            <Trash2 className="h-4 w-4 text-red-600" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         )}
                       </div>

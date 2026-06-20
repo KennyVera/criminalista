@@ -59,6 +59,12 @@ DEFAULT_PARAMETROS = [
         "Subtítulo del aplicativo",
     ),
     ("app_icon_url", "", "string", "Logo del aplicativo (URL o base64)"),
+    (
+        "combobox_opciones_visibles",
+        "10",
+        "int",
+        "Opciones visibles en listas desplegables antes del scroll",
+    ),
 ]
 
 DEFAULT_RESPALDO = [

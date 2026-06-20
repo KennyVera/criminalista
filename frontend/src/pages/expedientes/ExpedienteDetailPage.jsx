@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, Navigate } from 'react-router-dom'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, FileText, AlertCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { expedientesApi } from '../../api/expedientes'
 import ExpedienteTabs from '../../components/expediente/ExpedienteTabs'
@@ -38,31 +38,42 @@ export default function ExpedienteDetailPage() {
 
   return (
     <section className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Link
-            to="/investigaciones/progreso"
-            className="mb-2 inline-flex items-center gap-1 text-sm text-brand-600 hover:underline"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver a expedientes
-          </Link>
-          <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900">
-            <FileText className="h-6 w-6 text-brand-600" />
-            Expediente {caseNumber}
-          </h2>
-          {cabecera && (
-            <p className="mt-1 text-sm text-slate-500">
-              Estado: {cabecera.estado_caso || '—'} · Avance {cabecera.avance_pct ?? 0}%
-              {cabecera.asignacion?.detective_nombre && (
-                <> · {cabecera.asignacion.detective_nombre}</>
-              )}
-            </p>
+      <div className="glass-card rounded-xl p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Link
+              to="/investigaciones/progreso"
+              className="mb-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver a expedientes
+            </Link>
+            <h2 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-900">
+              <span className="rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 p-2 text-white shadow-md">
+                <FileText className="h-5 w-5" />
+              </span>
+              Expediente {caseNumber}
+            </h2>
+            {cabecera && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                <span className="status-badge status-badge--neutral">
+                  {cabecera.estado_caso || 'Sin estado'}
+                </span>
+                <span>·</span>
+                <span>Avance {cabecera.avance_pct ?? 0}%</span>
+                {cabecera.asignacion?.detective_nombre && (
+                  <>
+                    <span>·</span>
+                    <span>{cabecera.asignacion.detective_nombre}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          {cabecera?.dim_caso?.prioridad_caso && (
+            <Badge tone="blue">{cabecera.dim_caso.prioridad_caso}</Badge>
           )}
         </div>
-        {cabecera?.dim_caso?.prioridad_caso && (
-          <Badge tone="blue">{cabecera.dim_caso.prioridad_caso}</Badge>
-        )}
       </div>
 
       {loading ? (
@@ -70,7 +81,10 @@ export default function ExpedienteDetailPage() {
           <Spinner />
         </div>
       ) : error ? (
-        <p className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>
+        <div className="flex items-start gap-3 rounded-xl border border-red-200/80 bg-red-50/80 p-4 text-sm text-red-800 shadow-sm">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          <p>{error}</p>
+        </div>
       ) : (
         <ExpedienteTabs active={tab} onChange={setTab}>
           {tab === 'general' && <TabDetallesGenerales caseNumber={caseNumber} />}

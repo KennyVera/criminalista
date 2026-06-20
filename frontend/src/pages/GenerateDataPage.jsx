@@ -31,12 +31,12 @@ function ProgressBar({ percent, label }) {
       {label && (
         <div className="mb-2 flex justify-between text-sm">
           <span className="font-medium text-slate-700">{label}</span>
-          <span className="text-slate-500">{percent}%</span>
+          <span className="font-mono text-xs font-semibold text-brand-600">{percent}%</span>
         </div>
       )}
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/80">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-600 transition-all duration-300"
+          className="h-full rounded-full bg-gradient-to-r from-brand-500 via-brand-600 to-indigo-600 transition-all duration-300 shadow-sm"
           style={{ width: `${Math.min(100, percent)}%` }}
         />
       </div>
@@ -233,16 +233,25 @@ export default function GenerateDataPage() {
 
   return (
     <section className="mx-auto max-w-4xl space-y-6">
-      <header>
-        <h2 className="text-xl font-bold text-slate-900">Generar datos ficticios</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Faker inserta registros en <strong>crimes_220k</strong> (PocketBase). Opcionalmente
-          actualiza dimensiones y hechos en MinIO.
-        </p>
+      <header className="border-b border-slate-200/80 pb-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-indigo-600 text-white shadow-lg shadow-brand-600/25">
+            <Sparkles className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+              Generar datos ficticios
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Faker inserta registros en <strong className="text-slate-700">crimes_220k</strong>{' '}
+              (PocketBase). Opcionalmente actualiza dimensiones y hechos en MinIO.
+            </p>
+          </div>
+        </div>
       </header>
 
       {(phase === PHASE.form || phase === PHASE.error) && (
-        <Card>
+        <Card className="border-brand-200/40 bg-gradient-to-br from-brand-50/20 to-white">
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -251,7 +260,7 @@ export default function GenerateDataPage() {
             className="space-y-4"
           >
             <label className="block max-w-xs">
-              <span className="mb-1 block text-sm font-medium text-slate-700">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Cantidad de registros
               </span>
               <input
@@ -260,17 +269,17 @@ export default function GenerateDataPage() {
                 max={MAX_TOTAL}
                 value={count}
                 onChange={(e) => setCount(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
               />
-              <span className="mt-1 block text-xs text-slate-500">
+              <span className="mt-1.5 block text-xs leading-relaxed text-slate-500">
                 La generación corre en segundo plano (lotes de 5.000, inserción paralela). Hasta{' '}
                 {MAX_TOTAL.toLocaleString('es-CO')} registros sin bloquear el navegador.
               </span>
             </label>
 
             {phase === PHASE.error && errorMsg && (
-              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                <AlertCircle className="h-5 w-5 shrink-0" />
+              <div className="flex items-start gap-3 rounded-xl border border-red-200/80 bg-red-50/90 p-3 text-sm text-red-800">
+                <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
                 <p>{errorMsg}</p>
               </div>
             )}
@@ -302,7 +311,7 @@ export default function GenerateDataPage() {
 
       {phase === PHASE.generating && (
         <Card>
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-4 flex items-center gap-3 rounded-xl bg-brand-50/50 px-4 py-3">
             <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
             <p className="font-medium text-slate-800">Generando datos con Faker...</p>
           </div>
@@ -329,57 +338,63 @@ export default function GenerateDataPage() {
 
       {(phase === PHASE.preview || phase === PHASE.etl || phase === PHASE.etlDone) && (
         <>
-          <Card>
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              <p className="font-medium text-slate-900">
-                {genSummary?.created} registros insertados en crimes_220k
-              </p>
-              <Badge tone="green">PocketBase</Badge>
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-emerald-100 bg-emerald-50/50 px-5 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                <p className="font-semibold text-slate-900">
+                  {genSummary?.created} registros insertados en crimes_220k
+                </p>
+                <Badge tone="green">PocketBase</Badge>
+              </div>
             </div>
 
-            <h3 className="mb-3 text-sm font-semibold text-slate-700">
+            <div className="p-5">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Vista previa (ultimos {previewRows.length} generados)
             </h3>
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                <thead className="border-b border-slate-200 bg-slate-50/80">
                   <tr>
-                    <th className="px-3 py-2">Caso</th>
-                    <th className="px-3 py-2">Tipo</th>
-                    <th className="px-3 py-2">Bloque</th>
-                    <th className="px-3 py-2">Distrito</th>
-                    <th className="px-3 py-2">Fecha</th>
-                    <th className="px-3 py-2">Arresto</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Caso</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Tipo</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Bloque</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Distrito</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Fecha</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Arresto</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.map((row) => (
-                    <tr key={row.id || row.pb_id} className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-medium">{row.case_number}</td>
-                      <td className="px-3 py-2">{row.primary_type}</td>
-                      <td className="max-w-[160px] truncate px-3 py-2">{row.block}</td>
-                      <td className="px-3 py-2">{row.district}</td>
-                      <td className="max-w-[140px] truncate px-3 py-2 text-xs">{row.date}</td>
-                      <td className="px-3 py-2">{row.arrest}</td>
+                    <tr key={row.id || row.pb_id} className="border-b border-slate-100 transition hover:bg-slate-50/60">
+                      <td className="px-4 py-3 font-medium text-slate-900">{row.case_number}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.primary_type}</td>
+                      <td className="max-w-[160px] truncate px-4 py-3 text-slate-600">{row.block}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.district}</td>
+                      <td className="max-w-[140px] truncate px-4 py-3 text-xs text-slate-500">{row.date}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.arrest}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            </div>
           </Card>
 
           {errorMsg && phase === PHASE.preview && (
-            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-              <AlertCircle className="h-5 w-5 shrink-0" />
+            <div className="flex items-start gap-3 rounded-xl border border-red-200/80 bg-red-50/90 p-3 text-sm text-red-800">
+              <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
               <p>{errorMsg}</p>
             </div>
           )}
 
           {phase === PHASE.preview && (
-            <Card className="border-brand-200 bg-brand-50/30">
-              <div className="flex items-start gap-3">
-                <Layers className="h-6 w-6 shrink-0 text-brand-600" />
+            <Card className="overflow-hidden border-brand-200/60 bg-gradient-to-br from-brand-50/40 to-white">
+              <div className="flex items-start gap-4 p-5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-600">
+                  <Layers className="h-6 w-6" />
+                </div>
                 <div className="flex-1">
                   <p className="font-semibold text-slate-900">
                     Deseas alimentar tus tablas de Dimensiones?
@@ -403,7 +418,7 @@ export default function GenerateDataPage() {
 
           {phase === PHASE.etl && (
             <Card>
-              <div className="mb-4 flex items-center gap-3">
+              <div className="mb-4 flex items-center gap-3 rounded-xl bg-brand-50/50 px-4 py-3">
                 <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
                 <div>
                   <p className="font-medium text-slate-900">Alimentando dimensiones en MinIO...</p>
@@ -421,9 +436,11 @@ export default function GenerateDataPage() {
           )}
 
           {phase === PHASE.etlDone && etlResult && (
-            <Card className="border-emerald-200 bg-emerald-50/50">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            <Card className="overflow-hidden border-emerald-200/80 bg-gradient-to-br from-emerald-50/60 to-white">
+              <div className="flex items-start gap-4 p-5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                  <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+                </div>
                 <div>
                   <p className="font-semibold text-emerald-900">MinIO actualizado</p>
                   <p className="mt-1 text-sm text-emerald-800">{etlResult.message}</p>

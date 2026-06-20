@@ -214,12 +214,15 @@ class PocketBaseClient:
         sort: str = "-@rowid",
         filter_query: str | None = None,
         expand: str | None = None,
+        skip_total: bool = False,
     ) -> dict:
         params: dict[str, Any] = {"page": page, "perPage": per_page, "sort": sort}
         if filter_query:
             params["filter"] = filter_query
         if expand:
             params["expand"] = expand
+        if skip_total:
+            params["skipTotal"] = 1
         return self._handle(
             self._client.get(
                 f"/api/collections/{collection}/records",
@@ -227,6 +230,35 @@ class PocketBaseClient:
                 params=params,
             )
         )
+
+    def iter_records(
+        self,
+        collection: str,
+        *,
+        per_page: int = 500,
+        sort: str = "@rowid",
+        filter_query: str | None = None,
+        skip_total: bool = True,
+    ):
+        """Paginación cursor sin COUNT (skipTotal=1 por defecto)."""
+        page = 1
+        while True:
+            data = self.list_records(
+                collection,
+                page=page,
+                per_page=per_page,
+                sort=sort,
+                filter_query=filter_query,
+                skip_total=skip_total,
+            )
+            items = list(data.get("items", []))
+            if not items:
+                break
+            for item in items:
+                yield item
+            if len(items) < per_page:
+                break
+            page += 1
 
 
 def get_pocketbase_client(*, authenticate: bool = True) -> PocketBaseClient:

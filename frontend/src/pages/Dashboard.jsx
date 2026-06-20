@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -16,39 +16,29 @@ import {
   BarChart3,
   Filter,
   Map,
-  Shield,
   TrendingUp,
   Users,
+  Shield,
   Database,
-  Sparkles,
+  Briefcase,
+  Tags,
 } from 'lucide-react'
 import { dashboardApi } from '../api/dashboard'
+import Combobox from '../components/ui/Combobox'
 import { useAuth } from '../context/AuthContext'
+import { useAppConfig } from '../context/AppConfigContext'
 import { useToast } from '../context/ToastContext'
+import { CACHE_KEYS, readSessionCache, writeSessionCache } from '../lib/sessionCache'
+import { aggregateRowKey, rollupByDistrict } from '../utils/aggregateRowKey'
+import {
+  dashboardFiltersToApi,
+  EMPTY_DASHBOARD_FILTERS,
+  hasDashboardFilters,
+} from '../utils/dashboardFilters'
 import { canAccessDataCrud, canViewDashboard, canViewInvestigacionProgress, canViewOperationalIndicators } from '../utils/roles'
 import { Badge, Button, Card, Spinner } from '../components/ui'
-
-function KpiCard({ label, value, sub, icon: Icon, accent = 'from-blue-600 to-indigo-600' }) {
-  return (
-    <div className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white/80 p-5 shadow-lg shadow-slate-200/40 backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-xl">
-      <div
-        className={`absolute -right-6 -top-6 h-28 w-28 rounded-full bg-gradient-to-br ${accent} opacity-20 blur-2xl transition group-hover:opacity-30`}
-      />
-      <div className="relative flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-            {typeof value === 'number' ? value.toLocaleString('es-CO') : value ?? '—'}
-          </p>
-          {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
-        </div>
-        <div className={`rounded-xl bg-gradient-to-br ${accent} p-3 text-white shadow-lg`}>
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
-    </div>
-  )
-}
+import PageHeader from '../components/layout/PageHeader'
+import StatCard from '../components/layout/StatCard'
 
 const TABS = [
   { id: 'resumen', label: 'Resumen', icon: BarChart3 },
@@ -58,40 +48,43 @@ const TABS = [
   { id: 'indicadores', label: 'Indicadores', icon: Activity, analistaOnly: true },
 ]
 
-const EMPTY_FILTERS = { zona: '', tipo: '', anio: '', mes: '' }
-
-function FilterSelect({ label, value, onChange, children, disabled }) {
+function FilterMonthField({ label, value, onChange, disabled }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
-      <select
+      <span className="mb-1.5 block text-xs font-bold text-black">{label}</span>
+      <input
+        type="month"
         value={value}
-        onChange={onChange}
+        onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
-      >
-        {children}
-      </select>
+        className="input-field cursor-pointer font-normal disabled:cursor-not-allowed disabled:opacity-60"
+        aria-label={label}
+      />
     </label>
   )
 }
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const { comboboxVisibleCount } = useAppConfig()
   const toast = useToast()
   const showCrud = canAccessDataCrud(user)
   const showIndicadores = canViewOperationalIndicators(user)
   const canView = canViewDashboard(user)
 
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('resumen')
-  const [filterDraft, setFilterDraft] = useState(EMPTY_FILTERS)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab')
+  const cachedOverview = useMemo(
+    () => (canView ? readSessionCache(CACHE_KEYS.dashboardOverview) : null),
+    [canView]
+  )
+  const [stats, setStats] = useState(cachedOverview)
+  const [loading, setLoading] = useState(!cachedOverview)
+  const [refreshing, setRefreshing] = useState(false)
+  const [filterDraft, setFilterDraft] = useState(EMPTY_DASHBOARD_FILTERS)
   const [filterOptions, setFilterOptions] = useState({
     distritos: [],
     tipos_delito: [],
-    anios: [],
-    meses: [],
   })
   const [filtered, setFiltered] = useState(null)
   const [filtering, setFiltering] = useState(false)
@@ -99,22 +92,46 @@ export default function Dashboard() {
   const [ranking, setRanking] = useState([])
   const [rankingLoading, setRankingLoading] = useState(false)
 
-  const loadOverview = useCallback(async () => {
+  const tabs = useMemo(
+    () => TABS.filter((t) => !t.analistaOnly || showIndicadores),
+    [showIndicadores]
+  )
+
+  const tab = tabs.some((t) => t.id === tabFromUrl) ? tabFromUrl : 'resumen'
+
+  const setTab = (id) => {
+    if (!id || id === 'resumen') {
+      setSearchParams({})
+    } else {
+      setSearchParams({ tab: id })
+    }
+  }
+
+  const loadOverview = useCallback(async ({ background = false } = {}) => {
     if (!canView) return
-    setLoading(true)
+    if (background) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     try {
       const data = await dashboardApi.overview()
       setStats(data)
+      writeSessionCache(CACHE_KEYS.dashboardOverview, data)
     } catch (e) {
-      toast.error('Error', e.message || 'No se pudo cargar el dashboard')
+      if (!background) {
+        toast.error('Error', e.message || 'No se pudo cargar el dashboard')
+      }
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [toast, canView])
 
   useEffect(() => {
-    if (canView) loadOverview()
-  }, [loadOverview, canView])
+    if (!canView) return
+    loadOverview({ background: Boolean(cachedOverview) })
+  }, [canView, loadOverview, cachedOverview])
 
   const loadRanking = useCallback(async () => {
     if (!canView) return
@@ -155,32 +172,47 @@ export default function Dashboard() {
     }
   }, [stats?.detective_ranking])
 
-  const fetchFilteredStats = useCallback(async (params, { silent = false } = {}) => {
-    setFiltering(true)
-    try {
-      const data = await dashboardApi.filtros(params)
-      setFiltered(data)
-      if (!silent) {
-        toast.success('Éxito', 'Estadísticas actualizadas')
+  const fetchFilteredStats = useCallback(
+    async (draft, { silent = false } = {}) => {
+      const params = dashboardFiltersToApi(draft)
+      setFiltering(true)
+      try {
+        const data = await dashboardApi.filtros(params)
+        setFiltered(data)
+        if (!silent) {
+          toast.success('Éxito', 'Estadísticas actualizadas')
+        }
+      } catch (e) {
+        toast.error('Error', e.message)
+      } finally {
+        setFiltering(false)
       }
-    } catch (e) {
-      toast.error('Error', e.message)
-    } finally {
-      setFiltering(false)
-    }
-  }, [toast])
+    },
+    [toast]
+  )
 
   useEffect(() => {
-    if (!canView) return
+    if (!canView || tab !== 'filtros') return
     let cancelled = false
+    const cachedOptions = readSessionCache(CACHE_KEYS.dashboardFilterOptions)
+    const cachedFiltered = readSessionCache(CACHE_KEYS.dashboardFilteredEmpty)
+    if (cachedOptions) setFilterOptions(cachedOptions)
+    if (cachedFiltered) setFiltered(cachedFiltered)
+    if (cachedOptions && cachedFiltered) setOptionsLoading(false)
+
     ;(async () => {
-      setOptionsLoading(true)
+      if (!cachedOptions || !cachedFiltered) setOptionsLoading(true)
       try {
-        const [opts] = await Promise.all([
+        const [opts, filteredData] = await Promise.all([
           dashboardApi.filtrosOpciones(),
-          fetchFilteredStats(EMPTY_FILTERS, { silent: true }),
+          dashboardApi.filtros(dashboardFiltersToApi(EMPTY_DASHBOARD_FILTERS)),
         ])
-        if (!cancelled) setFilterOptions(opts)
+        if (!cancelled) {
+          setFilterOptions(opts)
+          setFiltered(filteredData)
+          writeSessionCache(CACHE_KEYS.dashboardFilterOptions, opts)
+          writeSessionCache(CACHE_KEYS.dashboardFilteredEmpty, filteredData)
+        }
       } catch (e) {
         if (!cancelled) toast.error('Error', e.message || 'No se cargaron opciones de filtro')
       } finally {
@@ -190,7 +222,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [fetchFilteredStats, toast, canView])
+  }, [toast, canView, tab])
 
   const applyFilters = async () => {
     await fetchFilteredStats(filterDraft)
@@ -198,17 +230,29 @@ export default function Dashboard() {
   }
 
   const clearFilters = async () => {
-    setFilterDraft(EMPTY_FILTERS)
-    await fetchFilteredStats(EMPTY_FILTERS, { silent: true })
+    setFilterDraft(EMPTY_DASHBOARD_FILTERS)
+    await fetchFilteredStats(EMPTY_DASHBOARD_FILTERS, { silent: true })
   }
 
-  const hasActiveFilters = Boolean(
-    filterDraft.zona || filterDraft.tipo || filterDraft.anio || filterDraft.mes
+  const hasActiveFilters = hasDashboardFilters(filterDraft)
+
+  const distritoOptions = useMemo(
+    () => [
+      { value: '', label: 'Todos los distritos' },
+      ...(filterOptions.distritos || []).map((d) => ({
+        value: d,
+        label: `Distrito ${d}`,
+      })),
+    ],
+    [filterOptions.distritos]
   )
 
-  const tabs = useMemo(
-    () => TABS.filter((t) => !t.analistaOnly || showIndicadores),
-    [showIndicadores]
+  const tipoOptions = useMemo(
+    () => [
+      { value: '', label: 'Todos los tipos' },
+      ...(filterOptions.tipos_delito || []).map((t) => ({ value: t, label: t })),
+    ],
+    [filterOptions.tipos_delito]
   )
 
   if (!canView) {
@@ -228,84 +272,62 @@ export default function Dashboard() {
 
   const t = stats?.totals || {}
   const chartDims = (stats?.dimension_counts || []).slice(0, 8)
-  const byDistrict = stats?.crimes_by_district?.items || []
+  const byDistrict = rollupByDistrict(
+    (stats?.crimes_by_district?.items || []).map((d) => ({
+      district: d.district,
+      beat: d.beat,
+      total: d.total_crimes,
+    }))
+  )
   const byType = stats?.crimes_by_type || []
   const heatMap = stats?.heat_map || []
   const operational = stats?.operational_indicators || {}
   const trend = operational?.tendencias_delictivas || []
 
   return (
-    <section className="space-y-8">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-900 px-6 py-8 text-white shadow-2xl md:px-10">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(59,130,246,0.35),_transparent_50%)]" />
-        <div className="relative flex flex-wrap items-end justify-between gap-6">
-          <div>
-            <p className="flex items-center gap-2 text-sm text-blue-200">
-              <Sparkles className="h-4 w-4" />
-              Paquete Dashboard y Analítica Criminal
-            </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
-              Overview analítico
-            </h1>
-            <p className="mt-2 max-w-xl text-sm text-slate-300">
-              KPIs, gráficas dinámicas, mapas de calor y ranking — ISO 9241-210
-            </p>
-            {stats?.from_cache && (
-              <span className="mt-3 inline-block rounded-lg bg-blue-500/20 px-2.5 py-1 text-xs text-blue-100">
-                Datos en caché · {stats?.performance?.dashboard_query_ms} ms
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {tabs.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                className={`flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition ${
-                  tab === id
-                    ? 'bg-white text-slate-900 shadow-lg'
-                    : 'bg-white/10 text-white hover:bg-white/20'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
+    <section className="space-y-6 animate-fade-up">
+      <PageHeader
+        title="Panel de control"
+        subtitle="Centro de comando · Analítica criminal en tiempo real"
+        icon={BarChart3}
+        badge={
+          stats?.from_cache || refreshing ? (
+            <span className="code-badge">
+              {refreshing ? 'Actualizando…' : 'Caché'}{' '}
+              {stats?.performance?.dashboard_query_ms != null
+                ? `· ${stats.performance.dashboard_query_ms} ms`
+                : ''}
+            </span>
+          ) : null
+        }
+      />
+
+      <div className="tab-bar">
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cnTab(tab === id)}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Hechos delictivos" value={t.fact_crimes} sub="MinIO · fact_crimes" icon={Shield} />
-        <KpiCard
-          label="Casos"
-          value={t.dim_caso}
-          sub="dim_caso"
-          icon={Activity}
-          accent="from-violet-600 to-purple-600"
-        />
-        <KpiCard
-          label="Tipos de crimen"
-          value={t.dim_tipo_crimen}
-          sub="Catálogo IUCR"
-          icon={Database}
-          accent="from-emerald-500 to-teal-600"
-        />
-        <KpiCard
-          label="Dataset raw"
-          value={t.crimes_220k}
-          sub="PocketBase staging"
-          icon={Database}
-          accent="from-slate-600 to-slate-800"
-        />
+        <StatCard label="Hechos delictivos" value={(t.fact_crimes ?? 0).toLocaleString('es-CO')} sub="MinIO · fact_crimes" sparkline="blue" icon={Shield} />
+        <StatCard label="Casos" value={(t.dim_caso ?? 0).toLocaleString('es-CO')} sub="dim_caso" sparkline="purple" icon={Briefcase} />
+        <StatCard label="Tipos de crimen" value={(t.dim_tipo_crimen ?? 0).toLocaleString('es-CO')} sub="Catálogo IUCR" sparkline="green" icon={Tags} />
+        <StatCard label="Dataset raw" value={(t.crimes_220k ?? 0).toLocaleString('es-CO')} sub="PocketBase staging" sparkline="blue" icon={Database} />
       </div>
 
       {tab === 'resumen' && (
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="border-0 bg-white/90 p-6 shadow-xl shadow-slate-200/50 backdrop-blur lg:col-span-2">
-            <h3 className="font-semibold text-slate-900">Registros por dimensión</h3>
-            <p className="text-sm text-slate-500">Modelo estrella · DuckDB</p>
+          <Card className="lg:col-span-2">
+            <h3 className="section-title">Registros por dimensión</h3>
+            <p className="section-subtitle">Modelo estrella · DuckDB</p>
             <div className="mt-4 h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartDims} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
@@ -328,18 +350,18 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card className="border-0 bg-white/90 p-6 shadow-xl shadow-slate-200/50 backdrop-blur">
-            <h3 className="font-semibold text-slate-900">Top distritos</h3>
+          <Card>
+            <h3 className="section-title">Top distritos</h3>
             <ul className="mt-4 max-h-72 space-y-2 overflow-y-auto">
-              {byDistrict.map((d) => (
+              {byDistrict.map((d, i) => (
                 <li
-                  key={`${d.district}-${d.beat}`}
-                  className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm"
+                  key={aggregateRowKey({ district: d.district, beat: d.beat }, i)}
+                  className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-sm transition hover:bg-indigo-50/50 dark:bg-slate-800/50 dark:hover:bg-indigo-950/30"
                 >
-                  <span>
+                  <span className="text-slate-700 dark:text-slate-300">
                     D{d.district} · {d.beat}
                   </span>
-                  <span className="font-mono text-xs font-semibold text-brand-600">
+                  <span className="font-mono text-xs font-semibold text-indigo-600 dark:text-indigo-400">
                     {Number(d.total_crimes).toLocaleString('es-CO')}
                   </span>
                 </li>
@@ -352,25 +374,25 @@ export default function Dashboard() {
             )}
           </Card>
 
-          <Card className="border-0 bg-white/90 p-6 shadow-xl shadow-slate-200/50 backdrop-blur lg:col-span-3">
-            <h3 className="font-semibold text-slate-900">Últimos hechos registrados</h3>
+          <Card className="lg:col-span-3">
+            <h3 className="section-title">Últimos hechos registrados</h3>
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="data-table">
                 <thead>
-                  <tr className="border-b text-xs uppercase tracking-wide text-slate-400">
-                    <th className="pb-2 pr-4">Legacy</th>
-                    <th className="pb-2 pr-4">Tipo</th>
-                    <th className="pb-2 pr-4">Distrito</th>
-                    <th className="pb-2">Año</th>
+                  <tr>
+                    <th>Legacy</th>
+                    <th>Tipo</th>
+                    <th>Distrito</th>
+                    <th>Año</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(stats?.recent_facts || []).map((row) => (
-                    <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/80">
-                      <td className="py-2.5 font-mono text-xs">{row.legacy_id ?? '—'}</td>
-                      <td className="py-2.5">{row.expand?.tipo_crimen?.primary_type ?? '—'}</td>
-                      <td className="py-2.5">{row.expand?.distrito?.district ?? '—'}</td>
-                      <td className="py-2.5">{row.expand?.tiempo?.year ?? '—'}</td>
+                    <tr key={row.id}>
+                      <td className="font-mono text-xs">{row.legacy_id ?? '—'}</td>
+                      <td>{row.expand?.tipo_crimen?.primary_type ?? '—'}</td>
+                      <td>{row.expand?.distrito?.district ?? '—'}</td>
+                      <td>{row.expand?.tiempo?.year ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -382,11 +404,11 @@ export default function Dashboard() {
 
       {tab === 'filtros' && (
         <div className="space-y-6">
-          <Card className="border-0 bg-white/90 p-6 shadow-lg backdrop-blur">
+          <Card className="overflow-visible border-0 bg-white/90 p-6 shadow-lg backdrop-blur">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="font-semibold text-slate-900">Filtrar estadísticas</h3>
-                <p className="text-sm text-slate-500">
+                <h3 className="section-title">Filtrar estadísticas</h3>
+                <p className="section-subtitle">
                   Selecciona criterios del catálogo. Sin filtros se muestran todos los hechos.
                 </p>
               </div>
@@ -394,61 +416,33 @@ export default function Dashboard() {
                 <Badge tone="blue">Filtros activos</Badge>
               )}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <FilterSelect
+            <div className="grid gap-3 overflow-visible sm:grid-cols-2 lg:grid-cols-3">
+              <Combobox
                 label="Zona / distrito"
                 value={filterDraft.zona}
                 disabled={optionsLoading}
-                onChange={(e) => setFilterDraft({ ...filterDraft, zona: e.target.value })}
-              >
-                <option value="">Todos los distritos</option>
-                {(filterOptions.distritos || []).map((d) => (
-                  <option key={d} value={d}>
-                    Distrito {d}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
+                visibleCount={comboboxVisibleCount}
+                placeholder="Todos los distritos"
+                options={distritoOptions}
+                onChange={(zona) => setFilterDraft({ ...filterDraft, zona })}
+              />
+              <Combobox
                 label="Tipo de delito"
                 value={filterDraft.tipo}
                 disabled={optionsLoading}
-                onChange={(e) => setFilterDraft({ ...filterDraft, tipo: e.target.value })}
-              >
-                <option value="">Todos los tipos</option>
-                {(filterOptions.tipos_delito || []).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label="Año"
-                value={filterDraft.anio}
+                visibleCount={comboboxVisibleCount}
+                placeholder="Todos los tipos"
+                options={tipoOptions}
+                onChange={(tipo) => setFilterDraft({ ...filterDraft, tipo })}
+              />
+              <FilterMonthField
+                label="Fecha (año y mes)"
+                value={filterDraft.fecha}
                 disabled={optionsLoading}
-                onChange={(e) => setFilterDraft({ ...filterDraft, anio: e.target.value })}
-              >
-                <option value="">Todos los años</option>
-                {(filterOptions.anios || []).map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label="Mes"
-                value={filterDraft.mes}
-                disabled={optionsLoading}
-                onChange={(e) => setFilterDraft({ ...filterDraft, mes: e.target.value })}
-              >
-                <option value="">Todos los meses</option>
-                {(filterOptions.meses || []).map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label || m.value}
-                  </option>
-                ))}
-              </FilterSelect>
+                onChange={(fecha) => setFilterDraft({ ...filterDraft, fecha })}
+              />
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <Button onClick={applyFilters} disabled={filtering || optionsLoading}>
                 {filtering ? 'Cargando…' : 'Aplicar filtros'}
               </Button>
@@ -470,43 +464,36 @@ export default function Dashboard() {
           ) : filtered ? (
             <>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <KpiCard
+                <StatCard
                   label="Hechos en vista"
-                  value={filtered.total_hechos}
-                  sub={
-                    hasActiveFilters
-                      ? 'Con filtros aplicados'
-                      : 'Vista inicial · sin filtros'
-                  }
-                  icon={Filter}
+                  value={(filtered.total_hechos ?? 0).toLocaleString('es-CO')}
+                  sub={hasActiveFilters ? 'Con filtros aplicados' : 'Vista inicial · sin filtros'}
+                  sparkline="blue"
                 />
-                <KpiCard
+                <StatCard
                   label="Tipos en ranking"
                   value={(filtered.por_tipo || []).length}
                   sub="Top delitos en esta vista"
-                  icon={BarChart3}
-                  accent="from-violet-600 to-purple-600"
+                  sparkline="purple"
                 />
-                <KpiCard
+                <StatCard
                   label="Años con datos"
                   value={(filtered.por_anio || []).length}
                   sub="Tendencia temporal"
-                  icon={TrendingUp}
-                  accent="from-emerald-500 to-teal-600"
+                  sparkline="green"
                 />
-                <KpiCard
+                <StatCard
                   label="Distritos"
                   value={(filtered.por_distrito || []).length}
                   sub="En el ranking actual"
-                  icon={Map}
-                  accent="from-slate-600 to-slate-800"
+                  sparkline="blue"
                 />
               </div>
 
               <div className="grid gap-6 lg:grid-cols-2">
                 <Card className="border-0 bg-white/90 p-6 shadow-lg backdrop-blur">
-                  <h4 className="font-semibold text-slate-900">Tendencia por año</h4>
-                  <p className="text-sm text-slate-500">Hechos según criterios seleccionados</p>
+                  <h4 className="section-title">Tendencia por año</h4>
+                  <p className="section-subtitle">Hechos según criterios seleccionados</p>
                   <div className="mt-4 h-64 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={filtered.por_anio || []}>
@@ -527,7 +514,7 @@ export default function Dashboard() {
                 </Card>
 
                 <Card className="border-0 bg-white/90 p-6 shadow-lg backdrop-blur">
-                  <h4 className="font-semibold text-slate-900">Por tipo de delito</h4>
+                  <h4 className="section-title">Por tipo de delito</h4>
                   <div className="mt-4 h-64 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={(filtered.por_tipo || []).slice(0, 8)} layout="vertical" margin={{ left: 8 }}>
@@ -548,11 +535,11 @@ export default function Dashboard() {
               </div>
 
               <Card className="border-0 bg-white/90 p-6 shadow-lg backdrop-blur">
-                <h4 className="font-semibold text-slate-900">Por distrito</h4>
+                <h4 className="section-title">Por distrito</h4>
                 <ul className="mt-4 divide-y divide-slate-100">
-                  {(filtered.por_distrito || []).slice(0, 10).map((r) => (
+                  {(filtered.por_distrito || []).slice(0, 10).map((r, i) => (
                     <li
-                      key={`${r.district}-${r.beat}`}
+                      key={aggregateRowKey({ district: r.district, beat: r.beat }, i)}
                       className="flex items-center justify-between py-2.5 text-sm"
                     >
                       <span>
@@ -573,12 +560,12 @@ export default function Dashboard() {
 
       {tab === 'mapa' && (
         <Card className="border-0 bg-white/90 p-6 shadow-xl backdrop-blur">
-          <h3 className="font-semibold text-slate-900">Mapa de calor por distrito</h3>
-          <p className="text-sm text-slate-500">Intensidad relativa de hechos delictivos</p>
+          <h3 className="section-title">Mapa de calor por distrito</h3>
+          <p className="section-subtitle">Intensidad relativa de hechos delictivos</p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {heatMap.map((z) => (
+            {heatMap.map((z, i) => (
               <div
-                key={`${z.district}-${z.beat}`}
+                key={aggregateRowKey({ district: z.district, beat: z.beat }, i)}
                 className="rounded-2xl border border-slate-100 p-4 transition hover:shadow-md"
                 style={{
                   background: `linear-gradient(135deg, rgba(37,99,235,${0.08 + (z.intensity || 0) * 0.5}) 0%, rgba(99,102,241,0.05) 100%)`,
@@ -604,8 +591,8 @@ export default function Dashboard() {
         <Card className="border-0 bg-white/90 p-6 shadow-xl backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="font-semibold text-slate-900">Ranking de detectives</h3>
-              <p className="text-sm text-slate-500">Por casos asignados y resueltos · actualización automática</p>
+              <h3 className="section-title">Ranking de detectives</h3>
+              <p className="section-subtitle">Por casos asignados y resueltos · actualización automática</p>
             </div>
             {rankingLoading && <Spinner className="h-5 w-5" />}
           </div>
@@ -619,19 +606,19 @@ export default function Dashboard() {
                   {d.rank}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900">{d.detective}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="section-title">{d.detective}</p>
+                  <p className="caption-text">
                     {d.casos_resueltos} resueltos / {d.casos_asignados} asignados
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold text-emerald-600">{d.tasa_resolucion}%</p>
-                  <p className="text-xs text-slate-500">tasa resolución</p>
+                  <p className="caption-text">tasa resolución</p>
                 </div>
               </div>
             ))}
             {ranking.length === 0 && !rankingLoading && (
-              <p className="text-sm text-slate-500">Sin detectives con casos asignados activos.</p>
+              <p className="section-subtitle">Sin detectives con casos asignados activos.</p>
             )}
           </div>
         </Card>
@@ -640,7 +627,7 @@ export default function Dashboard() {
       {tab === 'indicadores' && showIndicadores && (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="border-0 bg-white/90 p-6 shadow-xl backdrop-blur">
-            <h3 className="flex items-center gap-2 font-semibold text-slate-900">
+            <h3 className="flex items-center gap-2 section-title">
               <TrendingUp className="h-5 w-5 text-brand-600" />
               Tendencias delictivas
             </h3>
@@ -657,11 +644,11 @@ export default function Dashboard() {
             </div>
           </Card>
           <Card className="border-0 bg-gradient-to-br from-emerald-50 to-teal-50 p-6 shadow-xl">
-            <h3 className="font-semibold text-slate-900">Tasa de resolución</h3>
+            <h3 className="section-title">Tasa de resolución</h3>
             <p className="mt-6 text-6xl font-bold text-emerald-600">
               {operational?.tasa_resolucion?.porcentaje ?? 0}%
             </p>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 body-text">
               {operational?.tasa_resolucion?.casos_resueltos?.toLocaleString('es-CO')} casos resueltos de{' '}
               {operational?.tasa_resolucion?.total_casos?.toLocaleString('es-CO')}
             </p>
@@ -670,4 +657,8 @@ export default function Dashboard() {
       )}
     </section>
   )
+}
+
+function cnTab(active) {
+  return `tab-pill ${active ? 'tab-pill--active' : ''}`
 }

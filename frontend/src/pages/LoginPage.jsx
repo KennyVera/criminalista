@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
-import { Shield, LogIn, AlertCircle } from 'lucide-react'
+import { LogIn, AlertCircle, Lock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { Button, Card, PasswordInput } from '../components/ui'
+import { Button, Card, PasswordInput, Input, Label } from '../components/ui'
+import BrandLogo from '../components/layout/BrandLogo'
 import { useAppConfig } from '../context/AppConfigContext'
 import {
   SESSION_REVOKED_MESSAGE,
@@ -51,83 +52,97 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-brand-50/30 to-slate-100 p-6">
-      <Card className="w-full max-w-md shadow-xl">
-        <div className="mb-6 flex items-center gap-3">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F8FAFC] p-6">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgb(99_102_241/0.08),transparent)]" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-2/3 w-2/3 bg-[radial-gradient(ellipse_at_bottom_right,rgb(139_92_246/0.06),transparent)]" />
+
+      <div className="relative w-full max-w-[420px] animate-fade-up">
+        <div className="mb-8 flex flex-col items-center text-center">
           {iconUrl ? (
             <img
               src={iconUrl}
               alt={appName}
-              className="h-12 w-12 shrink-0 rounded-xl object-cover"
+              className="mb-4 h-14 w-14 rounded-[20px] object-cover shadow-lg"
             />
           ) : (
-            <div className="rounded-xl bg-brand-600 p-3 text-white">
-              <Shield className="h-8 w-8" />
-            </div>
+            <BrandLogo className="mb-4 h-14 w-14" />
           )}
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">{appName}</h1>
-            <p className="text-sm text-slate-500">
-              {subtitle || 'Autenticación y Seguridad (RBAC)'}
-            </p>
-          </div>
+          <p className="sidebar-brand-line text-sm">
+            CRIMETRACK <span className="sidebar-brand-line--light">ANALYTICS</span>
+          </p>
+          <p className="mt-1 text-sm text-[#64748B]">
+            {subtitle || 'Analítica criminal institucional'}
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Correo</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-              required
-              autoComplete="username"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Contraseña</span>
-            <PasswordInput
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </label>
-
-          {sessionNotice && (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              <AlertCircle className="h-5 w-5 shrink-0" />
-              <p>{sessionNotice}</p>
+        <Card static className="p-8">
+          <div className="mb-8 text-center">
+            <div className="page-icon mx-auto mb-5">
+              <Lock className="h-7 w-7" strokeWidth={1.75} />
             </div>
-          )}
-
-          {error && (
-            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-              <AlertCircle className="h-5 w-5 shrink-0" />
-              <p>{error}</p>
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <Link
-              to="/recuperar-contrasena"
-              className="text-sm text-brand-600 hover:text-brand-700 hover:underline"
-            >
-              ¿Olvidaste tu contraseña?
-            </Link>
+            <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">Iniciar sesión</h1>
+            <p className="mt-2 text-sm text-[#64748B]">
+              Acceso seguro para investigadores y personal institucional
+            </p>
           </div>
 
-          <Button type="submit" className="w-full justify-center" disabled={submitting}>
-            <LogIn className="h-4 w-4" />
-            {submitting ? 'Ingresando...' : 'Iniciar sesión'}
-          </Button>
-        </form>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <label className="block">
+              <Label>Correo electrónico</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="username"
+                placeholder="usuario@institucion.gov"
+              />
+            </label>
+            <label className="block">
+              <Label>Contraseña</Label>
+              <PasswordInput
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                placeholder="••••••••"
+              />
+            </label>
 
-        <p className="mt-4 text-center text-xs text-slate-500">
-          Paquete: Autenticación y Seguridad — datos en MinIO (app_usuarios)
+            {sessionNotice && (
+              <div className="alert-banner alert-banner--warning">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <p>{sessionNotice}</p>
+              </div>
+            )}
+
+            {error && (
+              <div className="alert-banner alert-banner--error">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <p>{error}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-1">
+              <Link
+                to="/recuperar-contrasena"
+                className="text-sm font-medium text-[#6366F1] transition hover:text-[#4F46E5]"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
+
+            <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+              <LogIn className="h-4 w-4" />
+              {submitting ? 'Ingresando…' : 'Iniciar sesión'}
+            </Button>
+          </form>
+        </Card>
+
+        <p className="mt-8 text-center text-xs text-[#94A3B8]">
+          © {new Date().getFullYear()} CrimeTrack Analytics · Plataforma institucional
         </p>
-      </Card>
+      </div>
     </div>
   )
 }

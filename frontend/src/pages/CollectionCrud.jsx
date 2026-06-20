@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, Search, RefreshCw } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, RefreshCw, Database } from 'lucide-react'
 import { api } from '../api/client'
 import { Button, Card, Spinner, EmptyState, Badge } from '../components/ui'
+import PageHeader from '../components/layout/PageHeader'
+import TablePagination from '../components/layout/TablePagination'
 import RecordModal from '../components/RecordModal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../context/ToastContext'
@@ -88,37 +90,38 @@ export default function CollectionCrud() {
   }
 
   return (
-    <section className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">{meta?.label || slug}</h2>
-          <p className="text-sm text-slate-500">
-            CRUD — crear, leer, actualizar y eliminar (normativa ISO 9241-210)
-          </p>
-          <span className="mt-2 inline-block">
-            <Badge tone="blue">
+    <section className="space-y-6">
+      <PageHeader
+        title={meta?.label || slug}
+        subtitle="Gestión de registros — crear, consultar, actualizar y eliminar"
+        icon={Database}
+        badge={
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="info">
               {(data.totalItems ?? 0).toLocaleString('es-CO')} registros
             </Badge>
             {meta?.storage && (
-              <Badge tone={meta.storage === 'pocketbase' ? 'gray' : 'green'}>
+              <Badge tone={meta.storage === 'pocketbase' ? 'neutral' : 'active'}>
                 {meta.storage === 'pocketbase' ? 'PocketBase' : 'MinIO'}
               </Badge>
             )}
-          </span>
-        </div>
-        <Button onClick={() => setModal({ open: true, record: null })}>
-          <Plus className="h-4 w-4" /> Nuevo
-        </Button>
-      </header>
+          </div>
+        }
+        actions={
+          <Button onClick={() => setModal({ open: true, record: null })}>
+            <Plus className="h-4 w-4" /> Nuevo registro
+          </Button>
+        }
+      />
 
-      <Card className="flex flex-wrap gap-3">
+      <Card className="flex flex-wrap items-center gap-3 p-4">
         <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="search"
-            placeholder="Buscar…"
+            placeholder="Buscar en la tabla…"
             aria-label="Buscar registros"
-            className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm"
+            className="search-field"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value)
@@ -128,6 +131,7 @@ export default function CollectionCrud() {
         </div>
         <Button variant="secondary" onClick={reload} aria-label="Recargar">
           <RefreshCw className="h-4 w-4" />
+          <span className="hidden sm:inline">Actualizar</span>
         </Button>
       </Card>
 
@@ -157,73 +161,65 @@ export default function CollectionCrud() {
           </Button>
         </Card>
       ) : (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                {cols.map((c) => (
-                  <th key={c} className="px-4 py-3 font-semibold">
-                    {c}
-                  </th>
-                ))}
-                <th className="px-4 py-3 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((row) => (
-                <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/50">
+        <Card flush className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
                   {cols.map((c) => (
-                    <td key={c} className="max-w-[180px] truncate px-4 py-3 text-slate-700">
-                      {String(
-                        row[c] !== undefined && row[c] !== null && row[c] !== ''
-                          ? row[c]
-                          : row.expand?.[c]?.primary_type ??
-                            row.expand?.[c]?.district ??
-                            '—'
-                      ).slice(0, 80)}
-                    </td>
+                    <th key={c}>{c}</th>
                   ))}
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 text-slate-500 hover:bg-brand-50 hover:text-brand-600"
-                      onClick={() => setModal({ open: true, record: row })}
-                      aria-label="Editar"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600"
-                      onClick={() => setConfirm({ open: true, record: row })}
-                      aria-label="Eliminar"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
+                  <th className="text-right">Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.items.map((row) => (
+                  <tr key={row.id}>
+                    {cols.map((c) => (
+                      <td key={c} className="max-w-[180px] truncate text-slate-700 dark:text-slate-300">
+                        {String(
+                          row[c] !== undefined && row[c] !== null && row[c] !== ''
+                            ? row[c]
+                            : row.expand?.[c]?.primary_type ??
+                              row.expand?.[c]?.district ??
+                              '—'
+                        ).slice(0, 80)}
+                      </td>
+                    ))}
+                    <td className="text-right">
+                      <div className="inline-flex gap-1">
+                        <button
+                          type="button"
+                          className="rounded-lg p-2 text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/50"
+                          onClick={() => setModal({ open: true, record: row })}
+                          aria-label="Editar"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50"
+                          onClick={() => setConfirm({ open: true, record: row })}
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination
+            page={page}
+            totalPages={data.totalPages || 1}
+            totalItems={data.totalItems ?? 0}
+            perPage={perPage}
+            onPageChange={setPage}
+            itemLabel="registros"
+          />
         </Card>
-      )}
-
-      {!loading && (data.totalItems ?? 0) > 0 && (
-        <nav className="flex items-center justify-between text-sm" aria-label="Paginación">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Anterior
-          </Button>
-          <span className="text-slate-600">
-            Página {page} de {data.totalPages || 1}
-          </span>
-          <Button
-            variant="secondary"
-            disabled={page >= (data.totalPages || 1)}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Siguiente
-          </Button>
-        </nav>
       )}
 
       <RecordModal

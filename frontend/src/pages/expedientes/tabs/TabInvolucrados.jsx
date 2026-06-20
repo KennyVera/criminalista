@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { UserPlus } from 'lucide-react'
+import { UserPlus, Users } from 'lucide-react'
 import { expedientesApi } from '../../../api/expedientes'
 import { Button, Card, Badge, Spinner } from '../../../components/ui'
 import { useToast } from '../../../context/ToastContext'
 
 const TIPOS = ['Víctima', 'Testigo', 'Sospechoso']
+
+const TIPO_TONE = {
+  Víctima: 'red',
+  Testigo: 'blue',
+  Sospechoso: 'gray',
+}
 
 export default function TabInvolucrados({ caseNumber }) {
   const toast = useToast()
@@ -54,28 +60,39 @@ export default function TabInvolucrados({ caseNumber }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <Card className="p-4">
-        <h3 className="mb-3 font-semibold text-slate-900">Personas vinculadas</h3>
+      <Card className="glass-card p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Users className="h-5 w-5 text-indigo-600" />
+          <h3 className="font-semibold text-slate-900">Personas vinculadas</h3>
+        </div>
         {loading ? (
-          <Spinner />
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
         ) : items.length === 0 ? (
-          <p className="text-sm text-slate-500">Sin involucrados registrados.</p>
+          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center text-sm text-slate-500">
+            No hay personas registradas en este expediente.
+          </p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {items.map((p) => (
               <li
                 key={p.id_relacion}
-                className="rounded-xl border border-slate-100 px-3 py-2 text-sm"
+                className="rounded-xl border border-slate-200/70 bg-white/60 px-4 py-3 text-sm shadow-sm transition hover:border-indigo-200 hover:shadow-md"
               >
                 <div className="flex items-center gap-2">
-                  <Badge tone="blue">{p.tipo_relacion}</Badge>
-                  <span className="font-medium text-slate-900">
+                  <Badge tone={TIPO_TONE[p.tipo_relacion] || 'blue'}>{p.tipo_relacion}</Badge>
+                  <span className="font-semibold text-slate-900">
                     {p.nombres} {p.apellidos}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">ID: {p.identificacion || 'N/D'}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Identificación: {p.identificacion || 'No registrada'}
+                </p>
                 {p.declaracion && (
-                  <p className="mt-1 text-xs text-slate-600">{p.declaracion}</p>
+                  <p className="mt-2 rounded-lg bg-slate-50/80 px-2.5 py-1.5 text-xs leading-relaxed text-slate-600">
+                    {p.declaracion}
+                  </p>
                 )}
               </li>
             ))}
@@ -83,62 +100,64 @@ export default function TabInvolucrados({ caseNumber }) {
         )}
       </Card>
 
-      <Card className="p-4">
-        <h3 className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
-          <UserPlus className="h-4 w-4" />
+      <Card className="glass-card p-5">
+        <h3 className="mb-4 flex items-center gap-2 font-semibold text-slate-900">
+          <UserPlus className="h-5 w-5 text-indigo-600" />
           Agregar involucrado
         </h3>
         <form onSubmit={submit} className="space-y-3">
-          <label className="block text-sm">
-            Tipo
+          <label className="block text-sm font-medium text-slate-700">
+            Tipo de relación
             <select
               value={form.tipo_relacion}
               onChange={(e) => setForm({ ...form, tipo_relacion: e.target.value })}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+              className="input-field mt-1.5"
             >
               {TIPOS.map((t) => (
                 <option key={t}>{t}</option>
               ))}
             </select>
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm font-medium text-slate-700">
               Nombres
               <input
                 required
                 value={form.nombres}
                 onChange={(e) => setForm({ ...form, nombres: e.target.value })}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="input-field mt-1.5"
               />
             </label>
-            <label className="block text-sm">
+            <label className="block text-sm font-medium text-slate-700">
               Apellidos
               <input
                 required
                 value={form.apellidos}
                 onChange={(e) => setForm({ ...form, apellidos: e.target.value })}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="input-field mt-1.5"
               />
             </label>
           </div>
-          <label className="block text-sm">
+          <label className="block text-sm font-medium text-slate-700">
             Identificación
             <input
               value={form.identificacion}
               onChange={(e) => setForm({ ...form, identificacion: e.target.value })}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+              placeholder="Cédula, pasaporte u otro documento"
+              className="input-field mt-1.5"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm font-medium text-slate-700">
             Declaración / notas
             <textarea
               value={form.declaracion}
               onChange={(e) => setForm({ ...form, declaracion: e.target.value })}
               rows={2}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+              placeholder="Resumen de la declaración o notas relevantes…"
+              className="input-field mt-1.5"
             />
           </label>
-          <Button type="submit">Agregar</Button>
+          <Button type="submit">Agregar involucrado</Button>
         </form>
       </Card>
     </div>

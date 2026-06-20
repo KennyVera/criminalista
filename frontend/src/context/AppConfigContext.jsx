@@ -5,14 +5,22 @@ const AppConfigContext = createContext({
   appName: 'CrimeTrack Analytics',
   subtitle: 'Panel de analítica criminal — ISO 9241-210',
   iconUrl: '',
+  comboboxVisibleCount: 10,
   reloadConfig: async () => {},
 })
+
+function parseComboboxVisibleCount(raw) {
+  const n = parseInt(String(raw ?? ''), 10)
+  if (!Number.isFinite(n)) return 10
+  return Math.min(25, Math.max(3, n))
+}
 
 export function AppConfigProvider({ children }) {
   const [config, setConfig] = useState({
     appName: 'CrimeTrack Analytics',
     subtitle: 'Panel de analítica criminal — ISO 9241-210',
     iconUrl: '',
+    comboboxVisibleCount: 10,
   })
 
   const reloadConfig = useCallback(async () => {
@@ -22,6 +30,7 @@ export function AppConfigProvider({ children }) {
         appName: data.app_nombre || 'CrimeTrack Analytics',
         subtitle: data.app_subtitulo || 'Panel de analítica criminal — ISO 9241-210',
         iconUrl: data.app_icon_url || '',
+        comboboxVisibleCount: parseComboboxVisibleCount(data.combobox_opciones_visibles),
       })
     } catch {
       /* silent fallback to current state */

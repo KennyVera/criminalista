@@ -35,6 +35,9 @@ const POLICY_META = {
   },
 }
 
+const INPUT =
+  'w-full max-w-xs rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50'
+
 export default function AdminPoliciesPage() {
   const [items, setItems] = useState([])
   const [draft, setDraft] = useState({})
@@ -103,7 +106,7 @@ export default function AdminPoliciesPage() {
         <select
           value={value === 'true' ? 'true' : 'false'}
           onChange={(e) => setValor(id, e.target.value)}
-          className="w-full max-w-xs rounded-xl border px-3 py-2 text-sm"
+          className={INPUT}
           disabled={!draft[id]?.activa}
         >
           <option value="false">false — no obligatorio</option>
@@ -120,7 +123,7 @@ export default function AdminPoliciesPage() {
           max={meta.max}
           value={value}
           onChange={(e) => setValor(id, e.target.value)}
-          className="w-full max-w-xs rounded-xl border px-3 py-2 text-sm font-mono"
+          className={`${INPUT} font-mono`}
           disabled={!draft[id]?.activa}
         />
       )
@@ -130,7 +133,7 @@ export default function AdminPoliciesPage() {
       <input
         value={value}
         onChange={(e) => setValor(id, e.target.value)}
-        className="w-full max-w-xs rounded-xl border px-3 py-2 text-sm"
+        className={INPUT}
         disabled={!draft[id]?.activa}
       />
     )
@@ -144,9 +147,9 @@ export default function AdminPoliciesPage() {
         icon={Shield}
       />
 
-      <Card className="space-y-1 p-0 overflow-hidden">
+      <Card className="overflow-hidden p-0">
         {items.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-slate-500">
+          <p className="px-6 py-12 text-center text-sm text-slate-500">
             No hay políticas cargadas. Ejecute el seed de administración.
           </p>
         ) : (
@@ -156,37 +159,45 @@ export default function AdminPoliciesPage() {
             return (
               <div
                 key={p.id_politica}
-                className="flex flex-wrap items-start gap-4 border-b border-slate-100 px-4 py-4 last:border-0"
+                className={`flex flex-wrap items-start gap-4 border-b border-slate-100 px-5 py-5 transition last:border-0 hover:bg-slate-50/40 ${
+                  active ? '' : 'opacity-75'
+                }`}
               >
                 <div className="min-w-[200px] flex-1">
-                  <p className="font-medium text-slate-900">{p.nombre}</p>
-                  <p className="mt-0.5 font-mono text-xs text-slate-500">{p.clave}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-slate-900">{p.nombre}</p>
+                    <Badge tone={active ? 'green' : 'slate'}>{active ? 'Activa' : 'Inactiva'}</Badge>
+                  </div>
+                  <p className="mt-0.5 font-mono text-xs text-slate-400">{p.clave}</p>
                   {(meta?.hint || p.descripcion) && (
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
                       {meta?.hint || p.descripcion}
                     </p>
                   )}
                 </div>
 
-                <div className="flex min-w-[140px] flex-col gap-1">
-                  <span className="text-xs font-medium text-slate-500">Valor</span>
+                <div className="flex min-w-[140px] flex-col gap-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Valor
+                  </span>
                   {renderValorInput(p)}
                 </div>
 
-                <div className="flex min-w-[120px] flex-col items-start gap-1">
-                  <span className="text-xs font-medium text-slate-500">Estado</span>
+                <div className="flex min-w-[120px] flex-col items-start gap-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Estado
+                  </span>
                   <button
                     type="button"
                     title="Clic para activar o desactivar"
                     onClick={() => setActiva(p.id_politica, !active)}
+                    className="transition hover:opacity-80"
                   >
                     <Badge tone={active ? 'green' : 'slate'}>
                       {active ? 'Activa' : 'Inactiva'}
                     </Badge>
                   </button>
-                  <span className="text-[10px] text-slate-400">
-                    Inactiva = no aplica la regla
-                  </span>
+                  <span className="text-[10px] text-slate-400">Inactiva = no aplica la regla</span>
                 </div>
 
                 <div className="flex items-end self-stretch pb-0.5">
@@ -205,7 +216,7 @@ export default function AdminPoliciesPage() {
         )}
       </Card>
 
-      <p className="mt-4 text-xs text-slate-500">
+      <p className="mt-5 rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3 text-xs leading-relaxed text-slate-500">
         Las políticas activas se aplican de inmediato en nuevos inicios de sesión y al crear o
         cambiar contraseñas. La sesión en curso puede mantener la expiración anterior hasta volver
         a iniciar sesión.

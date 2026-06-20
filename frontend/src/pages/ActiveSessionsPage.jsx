@@ -1,8 +1,25 @@
 import { useCallback, useEffect, useState } from 'react'
-import { LogOut, Monitor, RefreshCw, Shield } from 'lucide-react'
+import {
+  LogOut,
+  Monitor,
+  RefreshCw,
+  Shield,
+  Lock,
+  Fingerprint,
+  CheckCircle2,
+  Users,
+  Database,
+} from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { Badge, Button, Card, Spinner } from '../components/ui'
+import PageHeader from '../components/layout/PageHeader'
+import StatCard from '../components/layout/StatCard'
+import UserCell from '../components/layout/UserCell'
+import TablePagination from '../components/layout/TablePagination'
+import InfoPanel from '../components/layout/InfoPanel'
+import RowActionsMenu from '../components/layout/RowActionsMenu'
 import { useToast } from '../context/ToastContext'
 
 function formatDate(value) {
@@ -19,6 +36,8 @@ export default function ActiveSessionsPage() {
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(10)
   const toast = useToast()
   const [closingId, setClosingId] = useState(null)
 
@@ -33,7 +52,7 @@ export default function ActiveSessionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [toast])
 
   useEffect(() => {
     load()
@@ -62,116 +81,183 @@ export default function ActiveSessionsPage() {
 
   if (user?.nombre_rol?.toLowerCase() !== 'admin') {
     return (
-      <Card className="border-amber-200 bg-amber-50">
-        <p className="font-medium text-amber-900">Acceso restringido</p>
-        <p className="mt-1 text-sm text-amber-800">
+      <Card className="border-amber-200/80">
+        <p className="font-semibold text-amber-900 dark:text-amber-200">Acceso restringido</p>
+        <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
           Solo el rol Admin puede gestionar sesiones activas.
         </p>
       </Card>
     )
   }
 
+  const totalPages = Math.max(1, Math.ceil(items.length / perPage))
+  const pageItems = items.slice((page - 1) * perPage, page * perPage)
+
   return (
-    <section className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900">
-            <Monitor className="h-6 w-6 text-brand-600" />
-            Sesiones activas
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Paquete Autenticación y Seguridad — dataset en MinIO (
-            <code className="text-xs">app_sesiones_activas</code>)
-          </p>
-        </div>
-        <Button type="button" variant="secondary" onClick={load} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Actualizar
-        </Button>
-      </header>
+    <section className="space-y-6 animate-fade-up">
+      <PageHeader
+        title="Sesiones activas"
+        subtitle="Paquete Autenticación y Seguridad — dataset en MinIO"
+        dataset="app_sesiones_activas"
+        icon={Monitor}
+        actions={
+          <Button type="button" variant="secondary" onClick={load} disabled={loading}>
+            <RefreshCw className={cnSpin(loading)} />
+            Actualizar
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <p className="text-sm text-slate-500">Sesiones en curso</p>
-          <p className="mt-1 text-3xl font-bold text-brand-600">{total}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-slate-500">Fuente</p>
-          <p className="mt-1 font-medium text-slate-800">MinIO Parquet</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-slate-500">Tu rol</p>
-          <p className="mt-1 flex items-center gap-2 font-medium text-slate-800">
-            <Shield className="h-4 w-4 text-emerald-600" />
-            {user?.nombre_rol}
-          </p>
-        </Card>
+        <StatCard
+          label="Sesiones en curso"
+          value={total}
+          sub="Usuarios conectados"
+          sparkline="blue"
+          icon={Users}
+        />
+        <StatCard
+          label="Fuente"
+          value="MinIO Parquet"
+          sub="Almacenamiento de datos"
+          sparkline="green"
+          icon={Database}
+        />
+        <StatCard
+          label="Tu rol"
+          value={user?.nombre_rol || '—'}
+          sub="Acceso total al sistema"
+          sparkline="purple"
+          icon={Shield}
+        />
       </div>
 
-      <Card>
+      <Card flush className="overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-16">
+          <div className="flex justify-center py-20">
             <Spinner />
           </div>
         ) : items.length === 0 ? (
-          <p className="py-12 text-center text-sm text-slate-500">
+          <p className="py-20 text-center body-text">
             No hay sesiones activas en este momento.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-3">ID</th>
-                  <th className="px-3 py-3">Usuario</th>
-                  <th className="px-3 py-3">Rol</th>
-                  <th className="px-3 py-3">Placa</th>
-                  <th className="px-3 py-3">IP</th>
-                  <th className="px-3 py-3">Inicio</th>
-                  <th className="px-3 py-3">Último acceso</th>
-                  <th className="px-3 py-3">Expira</th>
-                  <th className="px-3 py-3">Estado</th>
-                  <th className="px-3 py-3 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((row) => (
-                  <tr key={row.id_sesion || row.token_jti} className="border-t border-slate-100">
-                    <td className="px-3 py-2.5 font-mono text-xs">{row.id_sesion}</td>
-                    <td className="px-3 py-2.5">
-                      <p className="font-medium text-slate-900">
-                        {row.nombres} {row.apellidos}
-                      </p>
-                      <p className="text-xs text-slate-500">{row.email}</p>
-                    </td>
-                    <td className="px-3 py-2.5">{row.nombre_rol}</td>
-                    <td className="px-3 py-2.5">{row.numero_placa}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs">{row.direccion_ip || '—'}</td>
-                    <td className="px-3 py-2.5 text-xs">{formatDate(row.fecha_inicio)}</td>
-                    <td className="px-3 py-2.5 text-xs">{formatDate(row.fecha_ultimo_acceso)}</td>
-                    <td className="px-3 py-2.5 text-xs">{formatDate(row.fecha_expiracion)}</td>
-                    <td className="px-3 py-2.5">
-                      <Badge tone="green">Activa</Badge>
-                    </td>
-                    <td className="px-3 py-2.5 text-center">
-                      <button
-                        type="button"
-                        title="Cerrar sesión"
-                        aria-label={`Cerrar sesión de ${row.email}`}
-                        disabled={closingId === row.id_sesion}
-                        onClick={() => handleCloseSession(row)}
-                        className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <LogOut className="h-4 w-4" />
-                      </button>
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="data-table min-w-[960px]">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Placa</th>
+                    <th>IP</th>
+                    <th>Inicio de sesión</th>
+                    <th>Último acceso</th>
+                    <th>Expira</th>
+                    <th>Estado</th>
+                    <th className="text-center">Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {pageItems.map((row) => (
+                    <tr key={row.id_sesion || row.token_jti}>
+                      <td className="font-mono caption-text">{row.id_sesion}</td>
+                      <td>
+                        <UserCell
+                          name={`${row.nombres || ''} ${row.apellidos || ''}`.trim()}
+                          email={row.email}
+                        />
+                      </td>
+                      <td>
+                        <Badge tone="info">{row.nombre_rol}</Badge>
+                      </td>
+                      <td className="font-mono caption-text">
+                        {row.numero_placa || '—'}
+                      </td>
+                      <td className="font-mono caption-text">
+                        {row.direccion_ip || '—'}
+                      </td>
+                      <td className="caption-text">
+                        {formatDate(row.fecha_inicio)}
+                      </td>
+                      <td className="caption-text">
+                        {formatDate(row.fecha_ultimo_acceso)}
+                      </td>
+                      <td className="caption-text">
+                        {formatDate(row.fecha_expiracion)}
+                      </td>
+                      <td>
+                        <Badge tone="active">Activa</Badge>
+                      </td>
+                      <td className="text-center">
+                        <RowActionsMenu
+                          items={[
+                            {
+                              label: 'Cerrar sesión',
+                              icon: LogOut,
+                              danger: true,
+                              disabled: closingId === row.id_sesion,
+                              onClick: () => handleCloseSession(row),
+                            },
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <TablePagination
+              page={page}
+              totalPages={totalPages}
+              totalItems={items.length}
+              perPage={perPage}
+              onPageChange={setPage}
+              onPerPageChange={(n) => {
+                setPerPage(n)
+                setPage(1)
+              }}
+              itemLabel={items.length === 1 ? 'sesión' : 'sesiones'}
+            />
+          </>
         )}
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <InfoPanel title="Seguridad avanzada" icon={Lock}>
+          <p className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="h-4 w-4" />
+            Sistema protegido
+          </p>
+          <p className="mt-1 text-xs">Sesiones firmadas con JWT y revocación en tiempo real.</p>
+        </InfoPanel>
+        <InfoPanel
+          title="Acceso controlado"
+          icon={Fingerprint}
+          action={
+            <Link
+              to="/admin/politicas"
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+            >
+              Ver auditoría →
+            </Link>
+          }
+        >
+          <p className="text-xs">Políticas RBAC y control por rol institucional.</p>
+        </InfoPanel>
+        <InfoPanel title="Recomendaciones" icon={Shield}>
+          <ul className="space-y-1 text-xs">
+            <li>· Revise sesiones inusuales semanalmente</li>
+            <li>· Cierre sesiones de personal dado de baja</li>
+            <li>· Verifique IPs desde redes autorizadas</li>
+          </ul>
+        </InfoPanel>
+      </div>
     </section>
   )
+}
+
+function cnSpin(loading) {
+  return loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'
 }

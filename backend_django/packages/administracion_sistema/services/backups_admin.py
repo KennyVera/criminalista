@@ -6,8 +6,10 @@ import os
 import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
+from django.conf import settings
 
 from core.services.minio_store import MinioParquetStore
 from packages.administracion_sistema.storage import ADMIN_COLLECTIONS, SCHEMAS, AdminMinioStore
@@ -63,7 +65,27 @@ class BackupsAdminService:
         for col, default in defaults.items():
             if col not in df.columns:
                 df[col] = default
+        if "hora_programada" in df.columns:
+            df["hora_programada"] = df["hora_programada"].apply(self._normalize_hora)
         return df
+
+    @staticmethod
+    def _normalize_hora(hora: Any) -> str:
+        if hora is None or (isinstance(hora, float) and pd.isna(hora)):
+            return "02:00"
+        if hasattr(hora, "hour") and hasattr(hora, "minute"):
+            return f"{int(hora.hour):02d}:{int(hora.minute):02d}"
+        s = str(hora).strip()
+        if not s or s.lower() in {"nan", "none", "nat"}:
+            return "02:00"
+        token = s.replace("T", " ").split(" ")[-1]
+        parts = token.split(":")
+        if len(parts) >= 2:
+            try:
+                return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+            except ValueError:
+                pass
+        return "02:00"
 
     def _ensure_historial_table(self) -> None:
         try:
@@ -76,22 +98,37 @@ class BackupsAdminService:
 
     def get_config(self) -> list[dict[str, Any]]:
         df = self._normalize_config_df(self.admin.read_table("sys_respaldos_config"))
-        return df.to_dict(orient="records")
+        records = df.to_dict(orient="records")
+        for row in records:
+            if not self._is_active(row):
+                continue
+            if str(row.get("proxima_ejecucion") or "").strip():
+                continue
+            prox = self._calc_next_run(
+                str(row.get("frecuencia", "diario")),
+                str(row.get("hora_programada", "02:00")),
+            )
+            row["proxima_ejecucion"] = prox
+            self.admin.update_row(
+                "sys_respaldos_config",
+                int(row["id"]),
+                {"proxima_ejecucion": prox},
+            )
+        return records
 
     def create_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        hora = self._normalize_hora(data.get("hora_programada", "02:00"))
+        freq = str(data.get("frecuencia", "diario")).strip().lower()
         row = {
             "nombre": str(data.get("nombre", "Respaldo programado")).strip(),
-            "frecuencia": str(data.get("frecuencia", "diario")).strip().lower(),
+            "frecuencia": freq,
             "destino_minio_prefix": str(data.get("destino_minio_prefix", "backups/daily")).strip(),
             "tipo_respaldo": str(data.get("tipo_respaldo", "completo")).strip().lower(),
-            "hora_programada": str(data.get("hora_programada", "02:00")).strip(),
+            "hora_programada": hora,
             "activo": bool(data.get("activo", True)),
             "ultima_ejecucion": "",
             "ultimo_estado": "Pendiente de primera ejecución",
-            "proxima_ejecucion": self._calc_next_run(
-                str(data.get("frecuencia", "diario")),
-                str(data.get("hora_programada", "02:00")),
-            ),
+            "proxima_ejecucion": self._calc_next_run(freq, hora),
         }
         return self.admin.append_row("sys_respaldos_config", row)
 
@@ -108,13 +145,25 @@ class BackupsAdminService:
             "proxima_ejecucion",
         )
         payload = {k: data[k] for k in allowed if k in data}
+        if "hora_programada" in payload:
+            payload["hora_programada"] = self._normalize_hora(payload["hora_programada"])
+        if "frecuencia" in payload:
+            payload["frecuencia"] = str(payload["frecuencia"]).strip().lower()
+        if "activo" in payload:
+            payload["activo"] = bool(payload["activo"])
         if "frecuencia" in payload or "hora_programada" in payload:
             cfg = self.get_config()
-            current = next((c for c in cfg if int(c["id"]) == config_id), {})
+            current = next((c for c in cfg if int(c["id"]) == int(config_id)), {})
             freq = str(payload.get("frecuencia", current.get("frecuencia", "diario")))
-            hora = str(payload.get("hora_programada", current.get("hora_programada", "02:00")))
+            hora = str(
+                payload.get("hora_programada", current.get("hora_programada", "02:00"))
+            )
             payload["proxima_ejecucion"] = self._calc_next_run(freq, hora)
-        return self.admin.update_row("sys_respaldos_config", config_id, payload)
+        updated = self.admin.update_row("sys_respaldos_config", int(config_id), payload)
+        if not updated:
+            return None
+        updated["hora_programada"] = self._normalize_hora(updated.get("hora_programada"))
+        return updated
 
     def list_history(
         self, *, limit: int = 50, manual_only: bool = True
@@ -154,9 +203,9 @@ class BackupsAdminService:
     def run_due_scheduled(self) -> list[dict[str, Any]]:
         """Ejecuta respaldos programados vencidos (CU-17)."""
         results = []
-        now = datetime.now(timezone.utc)
+        now = now_dt()
         for cfg in self.get_config():
-            if not cfg.get("activo"):
+            if not self._is_active(cfg):
                 continue
             if not self._is_due(cfg, now):
                 continue
@@ -178,7 +227,7 @@ class BackupsAdminService:
     ) -> dict[str, Any]:
         self._ensure_historial_table()
         cfg_df = self._normalize_config_df(self.admin.read_table("sys_respaldos_config"))
-        row = cfg_df[cfg_df["id"] == config_id]
+        row = cfg_df[cfg_df["id"].astype(int) == int(config_id)]
         if row.empty:
             raise ValueError("Configuración de respaldo no encontrada")
 
@@ -189,11 +238,14 @@ class BackupsAdminService:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         dest = f"{prefix}/{tipo}/{ts}/"
         iniciado = utc_now_iso()
-        historial_id: int | None = None
-        if manual:
-            historial_id = self._append_history_start(
-                c, tipo, dest, manual, ejecutado_por, iniciado
-            )
+        historial_id = self._append_history_start(
+            c,
+            tipo,
+            dest,
+            manual,
+            ejecutado_por or ("manual" if manual else "sistema"),
+            iniciado,
+        )
 
         copied = 0
         logical_copied = 0
@@ -668,32 +720,52 @@ class BackupsAdminService:
         from_dt: datetime | None = None,
     ) -> str:
         base = from_dt or now_dt()
-        hours = FREQ_HOURS.get(frecuencia.lower(), 24)
-        nxt = base + timedelta(hours=hours)
+        hora = BackupsAdminService._normalize_hora(hora)
         try:
-            hh, mm = hora.split(":")[:2]
-            nxt = nxt.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+            hh, mm = map(int, hora.split(":")[:2])
         except (ValueError, TypeError):
-            pass
-        return nxt.isoformat()
+            hh, mm = 2, 0
+
+        candidate = base.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if candidate > base:
+            return candidate.isoformat()
+
+        freq = frecuencia.lower()
+        if freq == "semanal":
+            candidate += timedelta(days=7)
+        elif freq == "mensual":
+            candidate += timedelta(days=30)
+        else:
+            candidate += timedelta(days=1)
+        return candidate.isoformat()
 
     @staticmethod
     def _is_due(cfg: dict, now: datetime) -> bool:
         """True solo si llegó la hora programada (no en cada visita a la pantalla)."""
-        if not cfg.get("activo"):
+        if not BackupsAdminService._is_active(cfg):
             return False
         prox = str(cfg.get("proxima_ejecucion") or "").strip()
         if prox:
             try:
                 dt = datetime.fromisoformat(prox.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return now >= dt
+                    dt = dt.replace(tzinfo=_local_tz())
+                if now.tzinfo is None:
+                    now = now.replace(tzinfo=_local_tz())
+                return now >= dt.astimezone(_local_tz())
             except ValueError:
                 pass
         ultima = str(cfg.get("ultima_ejecucion") or "").strip()
         if not ultima:
-            return False
+            # Sin ejecución previa: usar hora del día en zona local.
+            hora = BackupsAdminService._normalize_hora(cfg.get("hora_programada"))
+            try:
+                hh, mm = map(int, hora.split(":")[:2])
+            except (ValueError, TypeError):
+                return False
+            local_now = now.astimezone(_local_tz()) if now.tzinfo else now.replace(tzinfo=_local_tz())
+            scheduled = local_now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            return local_now >= scheduled
         try:
             last = datetime.fromisoformat(ultima.replace("Z", "+00:00"))
             if last.tzinfo is None:
@@ -701,8 +773,22 @@ class BackupsAdminService:
         except ValueError:
             return False
         hours = FREQ_HOURS.get(str(cfg.get("frecuencia", "diario")).lower(), 24)
-        return now >= last + timedelta(hours=hours)
+        compare_now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+        return compare_now >= last + timedelta(hours=hours)
+
+    @staticmethod
+    def _is_active(cfg: dict) -> bool:
+        value = cfg.get("activo")
+        if isinstance(value, bool):
+            return value
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return False
+        return str(value).strip().lower() in {"true", "1", "yes", "si", "sí"}
+
+
+def _local_tz() -> ZoneInfo:
+    return ZoneInfo(getattr(settings, "TIME_ZONE", "America/Bogota"))
 
 
 def now_dt() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(_local_tz())

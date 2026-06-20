@@ -34,6 +34,9 @@ const TIPOS = [
   { value: 'incremental', label: 'Incremental (sesiones y auditoría)' },
 ]
 
+const INPUT =
+  'w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100'
+
 const emptyConfig = {
   nombre: '',
   frecuencia: 'diario',
@@ -58,6 +61,13 @@ function formatDt(iso) {
   } catch {
     return iso
   }
+}
+
+function normalizeTimeInput(value) {
+  if (!value) return '02:00'
+  const match = String(value).match(/(\d{1,2}):(\d{2})/)
+  if (!match) return '02:00'
+  return `${match[1].padStart(2, '0')}:${match[2]}`
 }
 
 function canDeleteHistorial(h) {
@@ -92,9 +102,10 @@ export default function AdminBackupsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      await adminApi.respaldosProgramados().catch(() => {})
       const [cfg, hist] = await Promise.all([
         adminApi.respaldos(false),
-        adminApi.respaldosHistorial(100),
+        adminApi.respaldosHistorial(100, false),
       ])
       setItems(cfg.items || [])
       setHistorial(hist.items || [])
@@ -123,7 +134,7 @@ export default function AdminBackupsPage() {
       frecuencia: row.frecuencia || 'diario',
       destino_minio_prefix: row.destino_minio_prefix || 'backups/daily',
       tipo_respaldo: row.tipo_respaldo || 'completo',
-      hora_programada: row.hora_programada || '02:00',
+      hora_programada: normalizeTimeInput(row.hora_programada),
       activo: Boolean(row.activo),
     })
     setFormOpen(true)
@@ -131,12 +142,16 @@ export default function AdminBackupsPage() {
 
   const saveConfig = async (e) => {
     e.preventDefault()
+    const payload = {
+      ...form,
+      hora_programada: normalizeTimeInput(form.hora_programada),
+    }
     try {
       if (editing) {
-        await adminApi.updateRespaldo(editing.id, form)
+        await adminApi.updateRespaldo(editing.id, payload)
         toast.success('Éxito', 'Configuración actualizada')
       } else {
-        await adminApi.createRespaldoConfig(form)
+        await adminApi.createRespaldoConfig(payload)
         toast.success('Éxito', 'Respaldo programado creado')
       }
       setFormOpen(false)
@@ -265,38 +280,45 @@ export default function AdminBackupsPage() {
         </Button>
       </AdminPageHeader>
 
-      <p className="mb-4 text-sm text-slate-600">
-        El respaldo <strong>completo</strong> incluye{' '}
-        <strong>{LOGICAL_TABLES_COMPLETO} tablas lógicas</strong> ({TX_TABLES_COMPLETO}{' '}
-        transaccionales — asignaciones, bitácora, evidencias, etc. — más {ADMIN_TABLES_COMPLETO}{' '}
-        de administración), la capa analítica MinIO (dimensiones + hechos) y el resumen del
-        dashboard. Al restaurar un ZIP completo no hace falta ETL desde PocketBase. Los respaldos
-        anteriores pueden mostrar <strong>16 tablas</strong>; desde el próximo respaldo verás{' '}
-        <strong>{LOGICAL_TABLES_COMPLETO}</strong>.
-      </p>
+      <Card className="mb-6 border-slate-200/80 bg-gradient-to-br from-slate-50/80 to-white">
+        <p className="text-sm leading-relaxed text-slate-600">
+          El respaldo <strong className="text-slate-800">completo</strong> incluye{' '}
+          <strong className="text-slate-800">{LOGICAL_TABLES_COMPLETO} tablas lógicas</strong> (
+          {TX_TABLES_COMPLETO} transaccionales — asignaciones, bitácora, evidencias, etc. — más{' '}
+          {ADMIN_TABLES_COMPLETO} de administración), la capa analítica MinIO (dimensiones +
+          hechos) y el resumen del dashboard. Al restaurar un ZIP completo no hace falta ETL desde
+          PocketBase. Los respaldos anteriores pueden mostrar{' '}
+          <strong className="text-slate-800">16 tablas</strong>; desde el próximo respaldo verás{' '}
+          <strong className="text-slate-800">{LOGICAL_TABLES_COMPLETO}</strong>.
+        </p>
+      </Card>
 
       {formOpen && (
-        <Card className="mb-6 border-brand-200 p-6">
+        <Card className="mb-6 border-brand-200/60 bg-gradient-to-br from-brand-50/40 to-white">
           <form onSubmit={saveConfig} className="space-y-4">
-            <h3 className="font-semibold text-slate-900">
+            <h3 className="border-b border-slate-100 pb-3 text-base font-semibold text-slate-900">
               {editing ? 'Editar programación' : 'Nueva programación de respaldo'}
             </h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block sm:col-span-2">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Nombre</span>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Nombre
+                </span>
                 <input
                   value={form.nombre}
                   onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  className={INPUT}
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Frecuencia</span>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Frecuencia
+                </span>
                 <select
                   value={form.frecuencia}
                   onChange={(e) => setForm({ ...form, frecuencia: e.target.value })}
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  className={INPUT}
                 >
                   {FRECUENCIAS.map((f) => (
                     <option key={f.value} value={f.value}>
@@ -306,24 +328,24 @@ export default function AdminBackupsPage() {
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Hora programada
                 </span>
                 <input
                   type="time"
                   value={form.hora_programada}
                   onChange={(e) => setForm({ ...form, hora_programada: e.target.value })}
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  className={INPUT}
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Tipo de respaldo
                 </span>
                 <select
                   value={form.tipo_respaldo}
                   onChange={(e) => setForm({ ...form, tipo_respaldo: e.target.value })}
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  className={INPUT}
                 >
                   {TIPOS.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -333,7 +355,7 @@ export default function AdminBackupsPage() {
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Destino MinIO (prefijo)
                 </span>
                 <input
@@ -341,20 +363,21 @@ export default function AdminBackupsPage() {
                   onChange={(e) =>
                     setForm({ ...form, destino_minio_prefix: e.target.value })
                   }
-                  className="w-full rounded-xl border px-3 py-2 font-mono text-sm"
+                  className={`${INPUT} font-mono`}
                   required
                 />
               </label>
-              <label className="flex items-center gap-2 sm:col-span-2">
+              <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 sm:col-span-2">
                 <input
                   type="checkbox"
                   checked={form.activo}
                   onChange={(e) => setForm({ ...form, activo: e.target.checked })}
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
-                <span className="text-sm text-slate-700">Programación activa</span>
+                <span className="text-sm font-medium text-slate-700">Programación activa</span>
               </label>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 border-t border-slate-100 pt-4">
               <Button type="submit">Guardar</Button>
               <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
                 Cancelar
@@ -370,52 +393,57 @@ export default function AdminBackupsPage() {
         </div>
       ) : (
         <>
-          <Card className="mb-6 overflow-x-auto">
-            <h3 className="border-b px-4 py-3 font-semibold text-slate-900">
-              Programaciones activas
-            </h3>
+          <Card className="mb-6 overflow-hidden p-0">
+            <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-3">
+              <h3 className="text-sm font-semibold text-slate-900">Programaciones activas</h3>
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <thead className="border-b border-slate-200 bg-slate-50/50">
                 <tr>
-                  <th className="px-3 py-2 text-left">Nombre</th>
-                  <th className="px-3 py-2 text-left">Frecuencia</th>
-                  <th className="px-3 py-2 text-left">Tipo</th>
-                  <th className="px-3 py-2 text-left">Destino</th>
-                  <th className="px-3 py-2 text-left">Próxima</th>
-                  <th className="px-3 py-2 text-left">Última</th>
-                  <th className="px-3 py-2">Estado</th>
-                  <th className="px-3 py-2">Acciones</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Nombre</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Frecuencia</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Hora</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Tipo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Destino</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Próxima</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Última</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Estado</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((r) => (
-                  <tr key={r.id} className="border-t">
-                    <td className="px-3 py-2 font-medium">{r.nombre}</td>
-                    <td className="px-3 py-2">{r.frecuencia}</td>
-                    <td className="px-3 py-2 capitalize">{r.tipo_respaldo || 'completo'}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{r.destino_minio_prefix}</td>
-                    <td className="px-3 py-2 text-xs">{formatDt(r.proxima_ejecucion)}</td>
-                    <td className="px-3 py-2 text-xs">{formatDt(r.ultima_ejecucion)}</td>
-                    <td className="px-3 py-2">
+                  <tr key={r.id} className="border-b border-slate-100 transition hover:bg-slate-50/60">
+                    <td className="px-4 py-3 font-medium text-slate-900">{r.nombre}</td>
+                    <td className="px-4 py-3 text-slate-700">{r.frecuencia}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-700">
+                      {normalizeTimeInput(r.hora_programada)}
+                    </td>
+                    <td className="px-4 py-3 capitalize text-slate-700">{r.tipo_respaldo || 'completo'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.destino_minio_prefix}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{formatDt(r.proxima_ejecucion)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{formatDt(r.ultima_ejecucion)}</td>
+                    <td className="px-4 py-3">
                       <Badge tone={r.activo ? 'green' : 'slate'} title={r.ultimo_estado}>
                         {formatBackupEstado(r.ultimo_estado)}
                       </Badge>
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="flex gap-1">
+                    <td className="px-4 py-3">
+                      <div className="flex gap-0.5">
                         <button
                           type="button"
                           title="Ejecutar ahora (manual)"
-                          className="rounded-lg p-2 hover:bg-slate-100"
+                          className="rounded-lg p-2 text-slate-500 transition hover:bg-brand-50 hover:text-brand-600 disabled:opacity-50"
                           disabled={runningId === r.id}
                           onClick={() => ejecutar(r.id)}
                         >
-                          <Play className="h-4 w-4 text-brand-600" />
+                          <Play className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
                           title="Editar"
-                          className="rounded-lg p-2 hover:bg-slate-100"
+                          className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
                           onClick={() => openEdit(r)}
                         >
                           <Pencil className="h-4 w-4" />
@@ -426,14 +454,20 @@ export default function AdminBackupsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
 
-          <Card className="mb-6 border-amber-100 bg-amber-50/40 p-6">
-            <h3 className="flex items-center gap-2 font-semibold text-slate-900">
-              <Upload className="h-4 w-4 text-amber-700" />
-              Restaurar desde ZIP (tu PC)
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
+          <Card className="mb-6 overflow-hidden border-amber-200/60 bg-gradient-to-br from-amber-50/60 to-white">
+            <div className="border-b border-amber-100/80 bg-amber-50/50 px-5 py-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                  <Upload className="h-4 w-4" />
+                </div>
+                Restaurar desde ZIP (tu PC)
+              </h3>
+            </div>
+            <div className="p-5">
+            <p className="text-sm leading-relaxed text-slate-600">
               Si eliminaste datos en MinIO, sube el ZIP completo descargado antes. Con analítica
               incluida la restauración es mucho más rápida (sin ETL de 320k desde PocketBase).
             </p>
@@ -442,7 +476,7 @@ export default function AdminBackupsPage() {
                 type="file"
                 accept=".zip,application/zip"
                 onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
-                className="text-sm"
+                className="text-sm file:mr-3 file:rounded-xl file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-700"
                 disabled={restoring}
               />
               <Button type="button" onClick={restaurarZip} disabled={restoring || !restoreFile}>
@@ -457,17 +491,19 @@ export default function AdminBackupsPage() {
                 canCancel={canCancel}
               />
             </div>
+            </div>
           </Card>
 
-          <Card className="overflow-x-auto">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <Card className="overflow-hidden p-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
               <div>
-                <h3 className="flex items-center gap-2 font-semibold text-slate-900">
-                  <History className="h-4 w-4" />
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <History className="h-4 w-4 text-brand-600" />
                   Historial de respaldos
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Solo ejecuciones manuales (botón Ejecutar). Los programados no llenan esta lista.
+                  Manuales y automáticos. La hora programada usa zona{' '}
+                  <strong>America/Bogota</strong>. Requiere Celery Beat activo o abrir esta página.
                 </p>
               </div>
               {selectedHist.size > 0 && (
@@ -487,40 +523,41 @@ export default function AdminBackupsPage() {
                 </Button>
               )}
             </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <thead className="border-b border-slate-200 bg-slate-50/50">
                 <tr>
-                  <th className="w-10 px-3 py-2">
+                  <th className="w-10 px-4 py-3">
                     <input
                       type="checkbox"
                       title="Seleccionar todos"
                       checked={allDeletableSelected && deletableHistorial.length > 0}
                       disabled={deletableHistorial.length === 0}
                       onChange={toggleSelectAllHist}
-                      className="rounded border-slate-300"
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                     />
                   </th>
-                  <th className="px-3 py-2 text-left">Inicio</th>
-                  <th className="px-3 py-2 text-left">Configuración</th>
-                  <th className="px-3 py-2 text-left">Tipo</th>
-                  <th className="px-3 py-2 text-left">Origen</th>
-                  <th className="px-3 py-2 text-left">Tablas</th>
-                  <th className="px-3 py-2">Estado</th>
-                  <th className="px-3 py-2 text-left">Detalle</th>
-                  <th className="px-3 py-2 text-center">Acciones</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Inicio</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Configuración</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Tipo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Origen</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Tablas</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Estado</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Detalle</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {historial.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-500">
                       Aún no hay ejecuciones registradas.
                     </td>
                   </tr>
                 ) : (
                   historial.map((h) => (
-                    <tr key={h.id} className="border-t">
-                      <td className="px-3 py-2">
+                    <tr key={h.id} className="border-b border-slate-100 transition hover:bg-slate-50/60">
+                      <td className="px-4 py-3">
                         <input
                           type="checkbox"
                           checked={selectedHist.has(h.id)}
@@ -531,46 +568,46 @@ export default function AdminBackupsPage() {
                               : 'No se puede eliminar en ejecución'
                           }
                           onChange={() => toggleHistSelect(h.id)}
-                          className="rounded border-slate-300 disabled:opacity-40"
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 disabled:opacity-40"
                         />
                       </td>
-                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs whitespace-nowrap text-slate-600">
                         {formatDt(h.iniciado_en)}
                       </td>
-                      <td className="px-3 py-2">{h.nombre_config}</td>
-                      <td className="px-3 py-2 capitalize">{h.tipo_respaldo}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-3 text-slate-800">{h.nombre_config}</td>
+                      <td className="px-4 py-3 capitalize text-slate-700">{h.tipo_respaldo}</td>
+                      <td className="px-4 py-3">
                         <Badge tone="blue">Manual</Badge>
                       </td>
-                      <td className="px-3 py-2 font-mono">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-600">
                         {displayTablasCount(h.tablas_copiadas)}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-3">
                         <Badge tone={estadoTone(h.estado)}>{h.estado}</Badge>
                       </td>
                       <td
-                        className="max-w-xs truncate px-3 py-2 text-xs text-slate-600"
+                        className="max-w-xs truncate px-4 py-3 text-xs text-slate-500"
                         title={h.detalle}
                       >
                         {formatBackupEstado(h.detalle)}
                       </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-0.5">
                           {String(h.estado).toLowerCase() === 'completado' ? (
                             <button
                               type="button"
                               title="Descargar ZIP"
-                              className="rounded-lg p-2 hover:bg-slate-100"
+                              className="rounded-lg p-2 text-slate-500 transition hover:bg-brand-50 hover:text-brand-600"
                               onClick={() => descargar(h.id)}
                             >
-                              <Download className="h-4 w-4 text-brand-600" />
+                              <Download className="h-4 w-4" />
                             </button>
                           ) : null}
                           {canDeleteHistorial(h) ? (
                             <button
                               type="button"
                               title="Eliminar del historial"
-                              className="rounded-lg p-2 hover:bg-red-50"
+                              className="rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600"
                               onClick={() =>
                                 confirmDeleteHistorial(
                                   [h.id],
@@ -578,7 +615,7 @@ export default function AdminBackupsPage() {
                                 )
                               }
                             >
-                              <Trash2 className="h-4 w-4 text-red-600" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           ) : (
                             <span className="px-2 text-xs text-slate-400">—</span>
@@ -590,6 +627,7 @@ export default function AdminBackupsPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </Card>
 
           <ConfirmDialog

@@ -38,6 +38,16 @@ class DashboardService:
         return patched
 
     def overview(self) -> dict[str, Any]:
+        from django.core.cache import cache
+
+        from core.services.analytics_service import DASHBOARD_CACHE_KEY, DASHBOARD_CACHE_TTL
+
+        cached = cache.get(DASHBOARD_CACHE_KEY)
+        if cached:
+            out = dict(cached)
+            out["from_cache"] = True
+            return out
+
         t0 = time.perf_counter()
         self._ensure_or_materialize()
         payload = self.store.get_payload("overview")
@@ -54,18 +64,30 @@ class DashboardService:
             "dashboard_query_ms": round((time.perf_counter() - t0) * 1000, 3),
             "engine": "app_dashboard_summary",
         }
+        cache.set(DASHBOARD_CACHE_KEY, payload, DASHBOARD_CACHE_TTL)
         return payload
 
     def filter_options(self) -> dict[str, Any]:
+        from django.core.cache import cache
+
+        cache_key = "crimetrack:dashboard:filter_options:v1"
+        cached = cache.get(cache_key)
+        if cached:
+            return {**dict(cached), "_from_cache": True}
+
         self._ensure_or_materialize()
         data = self.store.get_payload("filter_options")
         if data:
-            return dict(data)
+            out = dict(data)
+            cache.set(cache_key, out, 60 * 15)
+            return out
         from packages.dashboard_analitica.services.analytics_engine import (
             DashboardAnalyticsEngine,
         )
 
-        return DashboardAnalyticsEngine().filter_options()
+        out = DashboardAnalyticsEngine().filter_options()
+        cache.set(cache_key, out, 60 * 15)
+        return out
 
     def filtered_stats(
         self,

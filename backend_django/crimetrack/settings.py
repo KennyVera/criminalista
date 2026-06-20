@@ -146,6 +146,17 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 60 * 60
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
+CELERY_BEAT_SCHEDULE = {
+    "run-scheduled-backups": {
+        "task": "core.run_scheduled_backups",
+        "schedule": 60.0,
+    },
+    "refresh-dashboard-summary": {
+        "task": "core.refresh_dashboard_summary",
+        "schedule": 900.0,
+    },
+}
+
 # --- MinIO / analytics ---
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://127.0.0.1:9000")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "crimetrack-evidence")

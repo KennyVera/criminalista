@@ -34,8 +34,8 @@ export const adminApi = {
     api.request(`${B}/parametros/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),
   respaldos: (ejecutarPendientes = false) =>
     api.request(`${B}/respaldos/${ejecutarPendientes ? '?ejecutar_pendientes=1' : ''}`),
-  respaldosHistorial: (limit = 50) =>
-    api.request(`${B}/respaldos/historial/?limit=${limit}`),
+  respaldosHistorial: (limit = 50, manualOnly = false) =>
+    api.request(`${B}/respaldos/historial/?limit=${limit}&manual_only=${manualOnly ? '1' : '0'}`),
   deleteRespaldoHistorial: (historialId) =>
     api.request(`${B}/respaldos/historial/${historialId}/`, { method: 'DELETE' }),
   deleteRespaldoHistorialBulk: (ids) =>

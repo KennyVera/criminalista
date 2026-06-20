@@ -2,6 +2,8 @@ from django.urls import path
 
 from packages.dashboard_analitica.views import (
     DashboardDetectiveRankingView,
+    DashboardDirectAccessManifestView,
+    DashboardDirectAccessPreviewView,
     DashboardFilterOptionsView,
     DashboardFilteredStatsView,
     DashboardHeatMapView,
@@ -23,5 +25,15 @@ urlpatterns = [
         "indicadores-operativos/",
         DashboardOperationalIndicatorsView.as_view(),
         name="dashboard-indicadores-operativos",
+    ),
+    path(
+        "direct-access/manifest/",
+        DashboardDirectAccessManifestView.as_view(),
+        name="dashboard-direct-manifest",
+    ),
+    path(
+        "direct-access/preview/",
+        DashboardDirectAccessPreviewView.as_view(),
+        name="dashboard-direct-preview",
     ),
 ]

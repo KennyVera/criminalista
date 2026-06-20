@@ -8,9 +8,14 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.cache.redis_cache import cache_response
 from packages.expedientes_criminales.permissions import CanAccessExpedienteJWT
 from packages.expedientes_criminales.services.expediente_service import ExpedienteService
 from packages.expedientes_criminales.services.informe_pdf_ecuador import build_informe_pdf
+
+
+def _expediente_case_key(request, *args, **kwargs) -> str:
+    return str(kwargs.get("case_number") or (args[0] if args else request.path))
 
 
 def _err(exc: Exception, code=400):
@@ -25,6 +30,7 @@ def _svc() -> ExpedienteService:
 class ExpedienteCabeceraView(APIView):
     permission_classes = [CanAccessExpedienteJWT]
 
+    @cache_response("exp:cabecera", ttl=300, key_builder=_expediente_case_key)
     def get(self, request, case_number: str):
         try:
             return Response(_svc().get_cabecera(case_number))

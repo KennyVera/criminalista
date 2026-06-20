@@ -37,7 +37,7 @@ export default function BackupAlertsBell() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="relative rounded-xl p-2.5 text-slate-500 hover:bg-slate-100"
+        className="relative rounded-2xl p-2.5 text-[#64748B] transition hover:bg-white/80 hover:text-[#0F172A]"
         aria-label="Alertas de respaldo"
       >
         <Bell className="h-5 w-5" />
@@ -48,7 +48,7 @@ export default function BackupAlertsBell() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-slate-200 bg-white shadow-xl">
+        <div className="absolute right-0 z-50 mt-2 w-80 rounded-[20px] border border-white/90 bg-white/95 p-0 shadow-[var(--shadow-elevated)] backdrop-blur-xl">
           <div className="border-b px-4 py-3">
             <p className="font-semibold text-slate-900">Alertas de respaldo</p>
             <p className="text-xs text-slate-500">Fallos en las últimas 72 h</p>

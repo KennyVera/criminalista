@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Clock, PenLine } from 'lucide-react'
 import { expedientesApi } from '../../../api/expedientes'
 import { Button, Card, Spinner } from '../../../components/ui'
 import { useToast } from '../../../context/ToastContext'
@@ -55,41 +56,54 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <Card className="p-4">
-        <h3 className="mb-4 font-semibold text-slate-900">Línea de tiempo</h3>
+      <Card className="glass-card p-5">
+        <div className="mb-5 flex items-center gap-2">
+          <Clock className="h-5 w-5 text-indigo-600" />
+          <h3 className="font-semibold text-slate-900">Línea de tiempo</h3>
+        </div>
         {loading ? (
-          <Spinner />
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
         ) : items.length === 0 ? (
-          <p className="text-sm text-slate-500">Sin entradas en la bitácora.</p>
+          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center text-sm text-slate-500">
+            Aún no hay entradas en la bitácora de este expediente.
+          </p>
         ) : (
-          <ol className="relative border-l-2 border-brand-200 pl-6">
+          <ol className="relative border-l-2 border-indigo-200 pl-6">
             {items.map((entry) => (
               <li key={entry.id_bitacora} className="mb-6 last:mb-0">
-                <span className="absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full bg-brand-500" />
-                <time className="text-xs text-slate-500">{entry.fecha_hora}</time>
-                <p className="mt-1 text-sm font-medium text-slate-900">{entry.autor_nombre}</p>
-                <p className="text-sm text-slate-700">{entry.nota}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Avance {entry.avance_pct}% · {entry.estado_caso}
-                </p>
+                <span className="absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full border-2 border-white bg-indigo-500 shadow-sm shadow-indigo-500/30" />
+                <time className="text-xs font-medium text-slate-400">{entry.fecha_hora}</time>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{entry.autor_nombre}</p>
+                <p className="mt-0.5 text-sm leading-relaxed text-slate-700">{entry.nota}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="status-badge status-badge--neutral">
+                    Avance {entry.avance_pct}%
+                  </span>
+                  <span className="status-badge status-badge--active">{entry.estado_caso}</span>
+                </div>
               </li>
             ))}
           </ol>
         )}
       </Card>
 
-      <Card className="p-4">
-        <h3 className="mb-4 font-semibold text-slate-900">Registrar avance</h3>
+      <Card className="glass-card p-5">
+        <div className="mb-5 flex items-center gap-2">
+          <PenLine className="h-5 w-5 text-indigo-600" />
+          <h3 className="font-semibold text-slate-900">Registrar avance</h3>
+        </div>
         <form onSubmit={submit} className="space-y-4">
           <label className="block text-sm font-medium text-slate-700">
-            Avance de investigación: {avance}%
+            Avance de investigación: <span className="text-indigo-600">{avance}%</span>
             <input
               type="range"
               min={0}
               max={100}
               value={avance}
               onChange={(e) => setAvance(Number(e.target.value))}
-              className="mt-2 w-full accent-brand-600"
+              className="mt-2 w-full accent-indigo-600"
             />
           </label>
 
@@ -98,7 +112,7 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
             <select
               value={estado}
               onChange={(e) => setEstado(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+              className="input-field mt-1.5"
             >
               {ESTADOS.map((s) => (
                 <option key={s}>{s}</option>
@@ -107,14 +121,14 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
           </label>
 
           <label className="block text-sm font-medium text-slate-700">
-            Nota
+            Nota de bitácora
             <textarea
               required
               value={nota}
               onChange={(e) => setNota(e.target.value)}
               rows={4}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Diligencias realizadas, hallazgos, próximos pasos..."
+              className="input-field mt-1.5"
+              placeholder="Diligencias realizadas, hallazgos, próximos pasos…"
             />
           </label>
 

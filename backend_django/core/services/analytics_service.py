@@ -4,14 +4,11 @@ Consultas analiticas ultrarrapidas: DuckDB lee Parquet en MinIO via S3 (sin carg
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
-from urllib.parse import urlparse
-
-import duckdb
 
 from core.collections_meta import COLLECTIONS
+from core.services.duckdb_s3 import DuckDBS3Session
 from core.services.minio_store import DIM_COLLECTIONS, MinioParquetStore
 
 DASHBOARD_CACHE_KEY = "crimetrack:dashboard:stats:v3"
@@ -21,42 +18,19 @@ DASHBOARD_CACHE_TTL = 60 * 15  # 15 minutos
 class AnalyticsService:
     def __init__(self, store: MinioParquetStore | None = None):
         self.store = store or MinioParquetStore()
-        self._con: duckdb.DuckDBPyConnection | None = None
+        self._duck = DuckDBS3Session(self.store)
 
     def _s3_uri(self, key_or_glob: str) -> str:
-        return f"s3://{self.store.bucket}/{key_or_glob}"
+        return self._duck.s3_uri(key_or_glob)
 
-    def _configure_s3(self, con: duckdb.DuckDBPyConnection) -> None:
-        parsed = urlparse(self.store.endpoint)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or (443 if parsed.scheme == "https" else 9000)
-        use_ssl = parsed.scheme == "https"
-        access = os.getenv("MINIO_ROOT_USER", "minioadmin")
-        secret = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin_change_me")
-
-        con.execute("INSTALL httpfs;")
-        con.execute("LOAD httpfs;")
-        con.execute(f"SET s3_endpoint='{host}:{port}';")
-        con.execute(f"SET s3_access_key_id='{access}';")
-        con.execute(f"SET s3_secret_access_key='{secret}';")
-        con.execute(f"SET s3_use_ssl={'true' if use_ssl else 'false'};")
-        con.execute("SET s3_url_style='path';")
-
-    def connection(self) -> duckdb.DuckDBPyConnection:
-        if self._con is None:
-            self._con = duckdb.connect()
-            self._configure_s3(self._con)
-        return self._con
+    def connection(self):
+        return self._duck.connection()
 
     def _fact_parquet_source(self) -> str:
-        if self.store.has_consolidated_facts():
-            return self._s3_uri(self.store.fact_crimes_consolidated_key())
-        if self.store.has_partitioned_facts():
-            return self._s3_uri(self.store.fact_crimes_glob())
-        return self._s3_uri(self.store._object_key("fact_crimes"))
+        return self._duck.fact_parquet_source()
 
     def _dim_parquet(self, collection: str) -> str:
-        return self._s3_uri(self.store._object_key(collection))
+        return self._duck.dim_parquet(collection)
 
     def count_fact_crimes(self) -> int:
         con = self.connection()
@@ -292,3 +266,5 @@ def invalidate_dashboard_cache() -> None:
     from django.core.cache import cache
 
     cache.delete(DASHBOARD_CACHE_KEY)
+    cache.delete("crimetrack:dashboard:filter_options:v1")
+    cache.delete("crimetrack:dashboard:filtered:v1")

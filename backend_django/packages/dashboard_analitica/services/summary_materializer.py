@@ -102,6 +102,12 @@ def materialize_dashboard_summary() -> dict[str, Any]:
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
     store = DashboardSummaryStore()
     store.replace_all(entries, filas_hechos=fact_count, duracion_ms=elapsed_ms)
+    try:
+        from core.cache.invalidation import bump_cache_generation
+
+        bump_cache_generation()
+    except Exception:
+        pass
     invalidate_dashboard_cache()
 
     read_ms = store.read_timing_ms()

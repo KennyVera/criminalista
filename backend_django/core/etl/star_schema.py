@@ -1,27 +1,34 @@
 """
 ETL: crimes_220k (PocketBase) → modelo estrella Parquet → MinIO.
 
-1. Extraer dataset crudo desde PocketBase (paginas en paralelo)
-2. Transformar a dimensiones + fact_crimes (mapeo FK vectorizado)
-3. Persistir como .parquet en MinIO (capa analítica)
+Pipeline streaming (memoria plana en Celery):
+  1. Extraer por chunks (skipTotal=1)
+  2. Dimensiones incrementales chunk a chunk
+  3. Hechos en DuckDB staging → COPY Snappy directo a MinIO
 """
 
 from __future__ import annotations
 
+import gc
+import io
 import os
 import time
 from typing import Any, Callable
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from core.etl.dim_enrichment import enrich_all_dimensions
-from core.etl.fast_keys import as_merge_str, composite_key, map_foreign_key
-from core.etl.consolidated_upload import write_consolidated_fact_crimes
-from core.etl.pb_fetch import fetch_crimes_220k_parallel
+from core.etl.incremental_dims import IncrementalDimStore
+from core.etl.pb_fetch import FETCH_PER_PAGE, iter_crimes_220k_chunks
+from core.etl.streaming_fact_writer import DuckDBFactStreamWriter
 from core.services.minio_store import DIM_COLLECTIONS, MinioParquetStore
 from core.services.pocketbase import PocketBaseClient
 
 ProgressFn = Callable[[dict[str, Any]], None]
+
+_PB_DROP_COLS = frozenset({"collectionId", "collectionName", "expand"})
 
 
 def _emit(on_progress: ProgressFn | None, **kwargs: Any) -> None:
@@ -29,119 +36,11 @@ def _emit(on_progress: ProgressFn | None, **kwargs: Any) -> None:
         on_progress(kwargs)
 
 
-def _unique_dim(df: pd.DataFrame, cols: list[str], key_cols: list[str]) -> pd.DataFrame:
-    """Filas unicas para una dimensión; asigna id entero."""
-    subset = df[cols].copy()
-    for c in subset.columns:
-        subset[c] = as_merge_str(subset[c])
-    subset = subset.drop_duplicates(subset=key_cols, keep="first").reset_index(drop=True)
-    subset.insert(0, "id", range(1, len(subset) + 1))
-    return subset
-
-
-def _build_dimensions(raw_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """Construye dimensiones a partir del dataset plano."""
-    dims: dict[str, pd.DataFrame] = {}
-
-    dims["dim_caso"] = _unique_dim(raw_df, ["case_number"], ["case_number"])
-    dims["dim_caso"]["estado_caso"] = "Importado"
-    dims["dim_caso"]["prioridad_caso"] = "Media"
-
-    dims["dim_tipo_crimen"] = _unique_dim(
-        raw_df,
-        ["iucr", "primary_type", "description", "fbi_code"],
-        ["iucr", "primary_type"],
-    )
-
-    dims["dim_distrito_policial"] = _unique_dim(
-        raw_df,
-        ["beat", "district"],
-        ["beat", "district"],
-    )
-
-    dims["dim_area_administrativa"] = _unique_dim(
-        raw_df,
-        ["ward", "community_area"],
-        ["ward", "community_area"],
-    )
-
-    dims["dim_tiempo"] = _unique_dim(raw_df, ["date", "year"], ["date"])
-
-    dims["dim_ubicacion_lugar"] = _unique_dim(
-        raw_df,
-        ["location_description", "block"],
-        ["location_description", "block"],
-    )
-
-    geo_cols = ["latitude", "longitude", "location"]
-    for c in ("x_coordinate", "y_coordinate"):
-        if c in raw_df.columns:
-            geo_cols.append(c)
-    dims["dim_ubicacion_geografica"] = _unique_dim(
-        raw_df,
-        geo_cols,
-        ["latitude", "longitude"],
-    )
-
-    dims["dim_arresto"] = _unique_dim(raw_df, ["arrest"], ["arrest"])
-    dims["dim_violencia_domestica"] = _unique_dim(raw_df, ["domestic"], ["domestic"])
-    dims["dim_actualizacion"] = _unique_dim(raw_df, ["updated_on"], ["updated_on"])
-
-    return dims
-
-
-def _build_fact(raw_df: pd.DataFrame, dims: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    raw = raw_df.copy()
-    fk_cols = [c for c in raw.columns if c.startswith("fk_")]
-    if fk_cols:
-        raw = raw.drop(columns=fk_cols, errors="ignore")
-
-    n = len(raw)
-    fact = pd.DataFrame(
-        {
-            "id": pd.Series(range(1, n + 1), dtype="int64"),
-            "raw_row_id": as_merge_str(raw.get("id", pd.Series(range(1, n + 1)))),
-            "fk_caso": map_foreign_key(raw, dims["dim_caso"], ["case_number"], ["case_number"]),
-            "fk_tipo_crimen": map_foreign_key(
-                raw, dims["dim_tipo_crimen"], ["iucr", "primary_type"], ["iucr", "primary_type"]
-            ),
-            "fk_distrito": map_foreign_key(
-                raw, dims["dim_distrito_policial"], ["beat", "district"], ["beat", "district"]
-            ),
-            "fk_area": map_foreign_key(
-                raw,
-                dims["dim_area_administrativa"],
-                ["ward", "community_area"],
-                ["ward", "community_area"],
-            ),
-            "fk_tiempo": map_foreign_key(raw, dims["dim_tiempo"], ["date"], ["date"]),
-            "fk_ubicacion_lugar": map_foreign_key(
-                raw,
-                dims["dim_ubicacion_lugar"],
-                ["location_description", "block"],
-                ["location_description", "block"],
-            ),
-            "fk_ubicacion_geo": map_foreign_key(
-                raw,
-                dims["dim_ubicacion_geografica"],
-                ["latitude", "longitude"],
-                ["latitude", "longitude"],
-            ),
-            "fk_arresto": map_foreign_key(raw, dims["dim_arresto"], ["arrest"], ["arrest"]),
-            "fk_domestico": map_foreign_key(
-                raw, dims["dim_violencia_domestica"], ["domestic"], ["domestic"]
-            ),
-            "fk_actualizacion": map_foreign_key(
-                raw, dims["dim_actualizacion"], ["updated_on"], ["updated_on"]
-            ),
-        }
-    )
-
-    for col in fact.columns:
-        if col.startswith("fk_"):
-            fact[col] = pd.to_numeric(fact[col], errors="coerce").astype("Int64")
-
-    return fact
+def _chunk_to_dataframe(chunk: list[dict[str, Any]]) -> pd.DataFrame:
+    if not chunk:
+        return pd.DataFrame()
+    df = pd.DataFrame(chunk)
+    return df.drop(columns=[c for c in df.columns if c in _PB_DROP_COLS], errors="ignore")
 
 
 def _should_skip_raw_export(row_count: int, export_raw_copy: bool) -> bool:
@@ -152,6 +51,38 @@ def _should_skip_raw_export(row_count: int, export_raw_copy: bool) -> bool:
     return row_count > int(os.getenv("ETL_RAW_EXPORT_MAX_ROWS", "50000"))
 
 
+class _RawParquetStream:
+    """Acumula chunks raw en un Parquet Snappy en buffer durante el mismo recorrido PB."""
+
+    def __init__(self) -> None:
+        self._buffer = io.BytesIO()
+        self._writer: pq.ParquetWriter | None = None
+        self.total = 0
+
+    def write_chunk(self, df: pd.DataFrame) -> None:
+        if df.empty:
+            return
+        table = pa.Table.from_pandas(df, preserve_index=False)
+        if self._writer is None:
+            self._writer = pq.ParquetWriter(self._buffer, table.schema, compression="snappy")
+        self._writer.write_table(table)
+        self.total += len(df)
+
+    def flush_to_minio(self, store: MinioParquetStore) -> int:
+        if self._writer is None:
+            return 0
+        self._writer.close()
+        self._buffer.seek(0)
+        store._client.put_object(
+            Bucket=store.bucket,
+            Key=store._object_key("crimes_220k"),
+            Body=self._buffer.getvalue(),
+            ContentType="application/octet-stream",
+        )
+        store.invalidate_cache("crimes_220k")
+        return self.total
+
+
 def run_etl_pb_to_minio(
     *,
     export_raw_copy: bool = True,
@@ -159,75 +90,119 @@ def run_etl_pb_to_minio(
     should_cancel: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """
-    Pipeline ETL completo según requisitos 1–3:
-      1. Extraer crimes_220k desde PocketBase
-      2. Convertir a Parquet (dims + fact)
-      3. Cargar en MinIO
+    Pipeline ETL streaming:
+      1. PocketBase → chunks (skipTotal=1)
+      2. Dimensiones incrementales + hechos en DuckDB (disco)
+      3. COPY Parquet Snappy → MinIO (sin DataFrame monolítico en RAM)
     """
+
     def _abort_if_cancelled() -> None:
         if should_cancel and should_cancel():
             raise RuntimeError("ETL cancelado por el usuario.")
 
     t0 = time.time()
+    per_page = int(os.getenv("ETL_PB_PER_PAGE", str(FETCH_PER_PAGE)))
+    dim_store = IncrementalDimStore()
+    total_raw = 0
+    page = 0
+
     _abort_if_cancelled()
-    _emit(on_progress, phase="extract", percent=5, message="Extrayendo crimes_220k...")
+    _emit(on_progress, phase="extract", percent=5, message="Extrayendo crimes_220k (streaming)...")
+
+    store = MinioParquetStore()
+    summary: dict[str, Any] = {"collections": {}, "pipeline": "streaming"}
+    raw_stream: _RawParquetStream | None = None
+    if export_raw_copy and os.getenv("ETL_SKIP_RAW_EXPORT", "").lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        raw_stream = _RawParquetStream()
 
     with PocketBaseClient() as pb:
         pb.auth_admin()
-        raw_items = fetch_crimes_220k_parallel(pb)
 
-    _abort_if_cancelled()
+        with DuckDBFactStreamWriter() as fact_writer:
+            for chunk in iter_crimes_220k_chunks(pb, per_page=per_page):
+                _abort_if_cancelled()
+                page += 1
+                chunk_df = _chunk_to_dataframe(chunk)
+                if chunk_df.empty:
+                    continue
 
-    if not raw_items:
-        raise ValueError(
-            "No hay registros en crimes_220k (PocketBase). "
-            "Ejecuta migrate_from_postgres --steps raw primero."
-        )
+                if raw_stream is not None:
+                    raw_stream.write_chunk(chunk_df)
 
-    raw_df = pd.DataFrame(raw_items)
-    # Columnas PB internas que no aportan al modelo
-    raw_df = raw_df.drop(
-        columns=[c for c in raw_df.columns if c in ("collectionId", "collectionName", "expand")],
-        errors="ignore",
-    )
+                dim_store.ingest_chunk(chunk_df)
+                dims_partial = dim_store.to_dataframes()
+                inserted = fact_writer.append_chunk(chunk_df, dims_partial)
 
-    _emit(
-        on_progress,
-        phase="transform",
-        percent=25,
-        message=f"Transformando {len(raw_df):,} filas...".replace(",", "."),
-        raw_rows=len(raw_df),
-    )
+                total_raw += len(chunk_df)
+                del chunk_df, dims_partial, chunk
 
-    _abort_if_cancelled()
-    dims = enrich_all_dimensions(_build_dimensions(raw_df))
-    fact_df = _build_fact(raw_df, dims)
+                pct = min(55, 5 + int(page * 0.5))
+                _emit(
+                    on_progress,
+                    phase="transform",
+                    percent=pct,
+                    message=(
+                        f"Chunk {page}: {total_raw:,} filas · +{inserted} hechos staging"
+                    ).replace(",", "."),
+                    raw_rows=total_raw,
+                    dim_keys=dim_store.total_rows,
+                )
 
-    _abort_if_cancelled()
-    _emit(on_progress, phase="upload", percent=60, message="Subiendo Parquet a MinIO...")
+                if page % 10 == 0:
+                    gc.collect()
 
-    store = MinioParquetStore()
-    summary: dict[str, Any] = {"collections": {}, "raw_rows": len(raw_df)}
+            if total_raw == 0:
+                raise ValueError(
+                    "No hay registros en crimes_220k (PocketBase). "
+                    "Ejecuta migrate_from_postgres --steps raw primero."
+                )
 
-    skip_raw = _should_skip_raw_export(len(raw_df), export_raw_copy)
-    if not skip_raw:
-        raw_export = raw_df.copy()
-        if "id" not in raw_export.columns:
-            raw_export.insert(0, "id", range(1, len(raw_export) + 1))
-        store.write_df("crimes_220k", raw_export)
-        summary["collections"]["crimes_220k"] = len(raw_export)
-    else:
-        summary["raw_export_skipped"] = True
+            _emit(
+                on_progress,
+                phase="transform",
+                percent=56,
+                message="Enriqueciendo dimensiones...",
+                raw_rows=total_raw,
+            )
+            dims = enrich_all_dimensions(dim_store.to_dataframes())
 
-    for i, name in enumerate(DIM_COLLECTIONS):
-        _abort_if_cancelled()
-        store.write_df(name, dims[name])
-        summary["collections"][name] = len(dims[name])
-        pct = 60 + int(25 * (i + 1) / len(DIM_COLLECTIONS))
-        _emit(on_progress, phase="upload", percent=pct, message=f"Dimension {name} lista.")
+            _emit(on_progress, phase="upload", percent=60, message="Subiendo dimensiones a MinIO...")
+            for i, name in enumerate(DIM_COLLECTIONS):
+                _abort_if_cancelled()
+                store.write_df(name, dims[name])
+                summary["collections"][name] = len(dims[name])
+                pct = 60 + int(15 * (i + 1) / len(DIM_COLLECTIONS))
+                _emit(on_progress, phase="upload", percent=pct, message=f"Dimension {name} lista.")
 
-    _abort_if_cancelled()
-    consolidated_meta = write_consolidated_fact_crimes(store, fact_df, dims)
+            if raw_stream is not None:
+                if total_raw <= int(os.getenv("ETL_RAW_EXPORT_MAX_ROWS", "50000")):
+                    _emit(
+                        on_progress,
+                        phase="upload",
+                        percent=76,
+                        message="Subiendo raw crimes_220k...",
+                    )
+                    summary["collections"]["crimes_220k"] = raw_stream.flush_to_minio(store)
+                else:
+                    summary["raw_export_skipped"] = True
+                    summary["raw_export_reason"] = "ETL_RAW_EXPORT_MAX_ROWS"
+            else:
+                summary["raw_export_skipped"] = True
+
+            _abort_if_cancelled()
+            _emit(
+                on_progress,
+                phase="upload",
+                percent=85,
+                message="COPY fact_crimes DuckDB → MinIO (Snappy)...",
+            )
+            consolidated_meta = fact_writer.flush_to_minio(store)
+
+    summary["raw_rows"] = total_raw
     summary["collections"]["fact_crimes"] = consolidated_meta["rows"]
     summary["fact_consolidated"] = consolidated_meta
     summary["elapsed_seconds"] = round(time.time() - t0, 2)
@@ -243,8 +218,8 @@ def run_etl_pb_to_minio(
     return {
         "success": True,
         "message": (
-            f"ETL completado en {summary['elapsed_seconds']}s: {len(raw_df)} filas crudas -> "
-            f"{consolidated_meta['rows']} hechos en Parquet consolidado y "
+            f"ETL streaming en {summary['elapsed_seconds']}s: {total_raw} filas crudas → "
+            f"{consolidated_meta['rows']} hechos (DuckDB→S3) y "
             f"{len(DIM_COLLECTIONS)} dimensiones en MinIO."
         ),
         **summary,

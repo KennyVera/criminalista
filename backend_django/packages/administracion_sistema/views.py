@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.cache.redis_cache import cache_response
 from packages.autenticacion_seguridad.permissions import IsAdminJWT, IsAdminOrComisarioJWT
 from packages.administracion_sistema.services.backups_admin import BackupsAdminService
 from packages.administracion_sistema.services.restore_pipeline import enqueue_restore_and_etl
@@ -198,11 +199,18 @@ class PublicSystemConfigView(APIView):
         app_name = mapping.get("app_nombre") or "CrimeTrack Analytics"
         subtitle = mapping.get("app_subtitulo") or "Panel de analítica criminal — ISO 9241-210"
         icon_url = mapping.get("app_icon_url") or ""
+        raw_visible = mapping.get("combobox_opciones_visibles") or "10"
+        try:
+            combobox_visible = int(raw_visible)
+        except (TypeError, ValueError):
+            combobox_visible = 10
+        combobox_visible = max(3, min(25, combobox_visible))
         return Response(
             {
                 "app_nombre": app_name,
                 "app_subtitulo": subtitle,
                 "app_icon_url": icon_url,
+                "combobox_opciones_visibles": combobox_visible,
             }
         )
 
@@ -430,6 +438,11 @@ class AdminZonaDetailView(APIView):
 class AdminEstadoSistemaView(APIView):
     permission_classes = [IsAdminJWT]
 
+    @staticmethod
+    def _admin_status_key(request, *args, **kwargs) -> str:
+        return "estado-sistema"
+
+    @cache_response("admin:estado", ttl=120, key_builder=_admin_status_key)
     def get(self, request):
         return Response(SystemStatusService().supervise())
 

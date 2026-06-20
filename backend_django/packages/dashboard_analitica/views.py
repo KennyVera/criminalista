@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from packages.dashboard_analitica.permissions import IsAnalistaCriminalJWT, IsDashboardViewerJWT
 from packages.dashboard_analitica.services.dashboard_service import DashboardService
+from packages.dashboard_analitica.services.direct_access_service import DashboardDirectAccessService
 
 
 def _minio_error(exc: Exception):
@@ -82,6 +83,76 @@ class DashboardDetectiveRankingView(APIView):
             return Response(DashboardService().detective_ranking())
         except Exception as exc:
             return _minio_error(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DashboardDirectAccessManifestView(APIView):
+    """
+    GET — JSON ligero con Presigned URLs Parquet (Direct-to-Client).
+    React + DuckDB-Wasm consumen MinIO sin pasar por serialización Django.
+    """
+
+    permission_classes = [IsDashboardViewerJWT]
+
+    def get(self, request):
+        try:
+            expires = request.query_params.get("expires_in")
+            ttl = int(expires) if expires and expires.isdigit() else None
+            return Response(DashboardDirectAccessService().manifest(expires_in=ttl))
+        except Exception as exc:
+            return _minio_error(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DashboardDirectAccessPreviewView(APIView):
+    """GET — agregación pushdown en servidor (máx. 500 filas para UI)."""
+
+    permission_classes = [IsDashboardViewerJWT]
+
+    def get(self, request):
+        limit_raw = request.query_params.get("limit", "500")
+        try:
+            limit = max(1, min(int(limit_raw), 5000))
+        except ValueError:
+            limit = 500
+        try:
+            data = DashboardDirectAccessService().server_side_preview(
+                distrito=request.query_params.get("zona") or None,
+                tipo=request.query_params.get("tipo") or None,
+                year=request.query_params.get("anio") or None,
+                month=request.query_params.get("mes") or None,
+                limit=limit,
+            )
+            return Response(data)
+        except Exception:
+            from packages.dashboard_analitica.services.dashboard_service import DashboardService
+
+            fallback = DashboardService().filtered_stats(
+                distrito=request.query_params.get("zona") or None,
+                tipo=request.query_params.get("tipo") or None,
+                year=request.query_params.get("anio") or None,
+                month=request.query_params.get("mes") or None,
+            )
+            rows = []
+            for item in fallback.get("por_distrito") or []:
+                rows.append(
+                    {
+                        "distrito": item.get("district"),
+                        "beat": item.get("beat"),
+                        "tipo": "",
+                        "anio": "",
+                        "mes": "",
+                        "total": item.get("total_crimes"),
+                    }
+                )
+            return Response(
+                {
+                    "rows": rows[:limit],
+                    "total_hechos": int(fallback.get("total_hechos") or 0),
+                    "query_ms": 0,
+                    "source": "materialized_fallback",
+                }
+            )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
