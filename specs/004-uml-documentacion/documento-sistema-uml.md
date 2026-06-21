@@ -14,9 +14,10 @@ trazable a los objetivos estratégicos OE1–OE4 (inmutables).
 
 ## 2. Alcance UML del Sistema
 
-- **Incluye:** 12 paquetes UML (P01–P12), 86 casos de uso (10 estratégicos, 16 tácticos, 60
-  operativos), 14+1 actores (A01–A14, más A15 "Implementado adicional"), modelo de dominio inicial
-  y relaciones paquete↔caso de uso↔actor.
+- **Incluye:** 12 paquetes UML (P01–P12), 102 casos de uso (10 estratégicos, 16 tácticos, 76
+  operativos —incluidos los **16 nuevos de auditoría CU-O61…CU-O76** del paquete P03), 14+1 actores
+  (A01–A14, más A15 "Implementado adicional"), modelo de dominio inicial, **modelo de datos de
+  auditoría** (sección 10.1) y relaciones paquete↔caso de uso↔actor.
 - **Excluye:** implementación de código, diagramas gráficos finales (se entregan recomendaciones),
   dominios fuera de seguridad/justicia y cualquier alteración del alcance B2G u OE1–OE4.
 
@@ -73,6 +74,7 @@ P09,P10,P11 → P12 → alimenta Nivel Estratégico (CU-E01..E10)
 [A06 Usuario] ── CU-O01 Iniciar sesión ───────────────► (P01)
 [A01 Admin]   ── CU-O06..O10 Administración ──────────► (P02)
 [A05 Auditor] ── CU-O11..O15 Auditoría/Custodia ──────► (P03)
+[A05/Sistema] ── CU-O61..O76 Auditoría total (NUEVO) ─► (P03 transversal a P01..P12)
 [A03 Analista]── CU-O16..O20 Analítica criminal ──────► (P04)
 [A02 Investig]── CU-O21..O25 Expedientes ─────────────► (P05)
 [A04 Custodio]── CU-O26..O30 Evidencias ──────────────► (P06)
@@ -92,7 +94,7 @@ P09,P10,P11 → P12 → alimenta Nivel Estratégico (CU-E01..E10)
 |---|---|
 | P01 | CU-O01, CU-O02, CU-O03, CU-O04, CU-O05 |
 | P02 | CU-O06, CU-O07, CU-O08, CU-O09, CU-O10; (CU-T08, CU-T14 parcial) |
-| P03 | CU-O11, CU-O12, CU-O13, CU-O14, CU-O15; (CU-T12) |
+| P03 | CU-O11, CU-O12, CU-O13, CU-O14, CU-O15; **CU-O61…CU-O76 (NIVEL AUDITORÍA, nuevos)**; (CU-T12) |
 | P04 | CU-O16, CU-O17, CU-O18, CU-O19, CU-O20; (CU-T11, CU-E01) |
 | P05 | CU-O21, CU-O22, CU-O23, CU-O24, CU-O25 |
 | P06 | CU-O26, CU-O27, CU-O28, CU-O29, CU-O30 |
@@ -111,7 +113,7 @@ P09,P10,P11 → P12 → alimenta Nivel Estratégico (CU-E01..E10)
 | A02 Investigador | CU-O21–CU-O25, CU-O30–CU-O36 |
 | A03 Analista Criminal | CU-O16–CU-O20, CU-O35 |
 | A04 Custodio | CU-O15, CU-O26–CU-O30 |
-| A05 Auditor | CU-O11–CU-O15, CU-T12 |
+| A05 Auditor | CU-O11–CU-O15, **CU-O61–CU-O76 (auditoría total)**, CU-T12 |
 | A06 Usuario Institucional | CU-O01–CU-O05, CU-O36–CU-O40 |
 | A07 Ejecutivo | CU-E01–CU-E10, CU-O59 |
 | A08 Gerente Comercial | CU-O41–CU-O45, CU-T02–CU-T04, CU-T07, CU-T13, CU-T14 |
@@ -128,7 +130,11 @@ P09,P10,P11 → P12 → alimenta Nivel Estratégico (CU-E01..E10)
 Ver detalle ampliado en `paquetes-uml.md`. Resumen:
 
 - **P01** identidad, MFA, sesiones, RBAC. **P02** instituciones, usuarios, parámetros, licencias,
-  contratos. **P03** bitácoras, trazabilidad, alertas y custodia. **P04** mapa de calor,
+  contratos. **P03** auditoría y trazabilidad **total y centralizada** (CU-O11…O15 + CU-O61…O76):
+  registro append-only de toda operación (CRUD, auth/sesiones, RBAC, acceso sensible, expedientes,
+  evidencias/custodia, involucrados, exportaciones, configuración, APIs, cloud, BI) con hash
+  encadenado, alertas, verificación de integridad, retención/archivado y tablero/ reportes de
+  cumplimiento (ver `003-operativo/P03-auditoria/`). **P04** mapa de calor,
   indicadores, tendencias, predicción. **P05** ciclo de vida de expedientes. **P06** evidencias y
   cadena de custodia. **P07** involucrados. **P08** reportería y exportación. **P09** comercial
   B2G. **P10** APIs, integraciones y marketplace. **P11** cloud, SLA y continuidad. **P12**
@@ -137,8 +143,10 @@ Ver detalle ampliado en `paquetes-uml.md`. Resumen:
 ## 9. Descripción de Cada Caso de Uso
 
 El detalle completo (actor, objetivo, precondición, flujo principal, flujo alternativo y criterio
-de aceptación) de los 86 casos de uso está en `casos-uso.md`. Este documento referencia esa fuente
-para evitar duplicación y mantener una única verdad por caso de uso.
+de aceptación) de los 102 casos de uso está en `casos-uso.md`. Los **16 casos de uso nuevos de
+auditoría (CU-O61…CU-O76)** se documentan allí con la estructura ampliada de 18 puntos en la
+sección "CASOS DE USO NUEVOS — NIVEL AUDITORÍA (P03)". Este documento referencia esa fuente para
+evitar duplicación y mantener una única verdad por caso de uso.
 
 ## 10. Modelo de Dominio Inicial
 
@@ -161,6 +169,30 @@ Reglas de dominio destacadas: toda `Evidencia` mantiene `EventoCustodia` inmutab
 operación relevante crea `RegistroAuditoria` (RN-05); las capacidades visibles dependen de
 `Contrato`/`Licencia` (RN-07); cada `Institucion` aísla sus datos (RN-06).
 
+## 10.1 Modelo de Datos de Auditoría (P03 ampliado)
+
+Modelo centralizado **append-only** con `event_hash`/`previous_hash` encadenado. La tabla central
+`audit_events` se relaciona con tablas satélite. Diseño y decisión de almacenamiento (PostgreSQL
+append-only vs MinIO WORM, **PC-A1**) en `003-operativo/P03-auditoria/spec.md`.
+
+```text
+audit_events (central, append-only, hash-chain)
+  ├─1──*─ audit_event_changes (valor_anterior / valor_nuevo / diff, enmascarado)
+  ├─1──*─ audit_access_events  (acceso a info sensible: consulta/descarga/exportación…)
+  ├─1──*─ audit_exports        (reportes/exportaciones: formato, motivo, marca de agua)
+  └─1──*─ audit_api_events     (APIs/webhooks: endpoint, código, latencia; SIN secretos)
+audit_sessions        (inicio, última actividad, cierre, duración, IP, dispositivo, MFA)
+audit_evidence_events (hash inicial/recalculo, verificación) ─┐
+audit_custody_events  (custodio anterior/nuevo, motivo, ruptura)┘─ habilitan CU-O15
+audit_security_alerts (tipo, severidad, responsable, acción, cierre)
+audit_integrity_checks(verificación periódica de la cadena de hash)
+audit_retention_policies (retención por institución) ─1──*─ audit_archives (históricos)
+```
+
+Reglas: logs **append-only** (ningún rol altera el historial), tiempo en **servidor/UTC**, hash por
+evento, **enmascaramiento** de datos sensibles, **sin** contraseñas/tokens/secretos/API keys
+completas, aislamiento **multi-tenant** y solo Auditor/Compliance consulta auditoría completa.
+
 ## 11. Recomendación de Diagramas UML
 
 Diagramas sugeridos (legibles y proporcionados, RI-04; sin miniaturas):
@@ -170,7 +202,8 @@ Diagramas sugeridos (legibles y proporcionados, RI-04; sin miniaturas):
 3. **Diagrama de casos de uso por nivel** (estratégico, táctico, operativo).
 4. **Diagrama de clases del modelo de dominio** (entidades de la sección 10).
 5. **Diagramas de secuencia** para flujos críticos: CU-O01 (login+MFA), CU-O26→O28 (evidencia+hash),
-   CU-O25 (cierre de expediente), CU-O55 (DR).
+   CU-O25 (cierre de expediente), CU-O55 (DR), **CU-O61 (captura de auditoría vía middleware +
+   decorador → AuditService → hash-chain)** y **CU-O75 (verificación de integridad)**.
 6. **Diagrama de estados** del `Expediente` (abierto→en investigación→cerrado/reabierto).
 7. **Diagrama de actividad** para CU-O36/CU-O37 (generación y exportación de reportes).
 8. **Diagrama de despliegue** para la arquitectura cloud de alta disponibilidad (OE3).

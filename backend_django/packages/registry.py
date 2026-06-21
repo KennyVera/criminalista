@@ -39,8 +39,9 @@ PACKAGE_REGISTRY: tuple[PackageMeta, ...] = (
         id="auditoria_trazabilidad",
         nombre="Auditoría y Trazabilidad",
         carpeta="auditoria_trazabilidad",
-        descripcion="Consulta de logs y trazas de operación.",
-        implementado=False,
+        descripcion="Tablero, consulta, filtros y exportación de eventos de auditoría.",
+        implementado=True,
+        url_prefix="auditoria",
     ),
     PackageMeta(
         id="dashboard_analitica",

@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from core.cache.redis_cache import cache_response
 from packages.autenticacion_seguridad.permissions import IsAdminJWT, IsAdminOrComisarioJWT
+from packages.shared.audit import audit_request
 from packages.administracion_sistema.services.backups_admin import BackupsAdminService
 from packages.administracion_sistema.services.restore_pipeline import enqueue_restore_and_etl
 from packages.administracion_sistema.services.crud_tables import TableCrudService
@@ -46,6 +47,13 @@ class AdminUsersListCreateView(APIView):
             codigos = request.data.get("permisos", [])
             if codigos:
                 PermissionsAdminService().set_role_permissions(fk_rol, codigos)
+            audit_request(
+                request,
+                accion="USER_CREATED",
+                tabla="app_usuarios",
+                detalle=f"Usuario creado: {user.get('email')} (rol {fk_rol})",
+                despues=user,
+            )
             return Response(user, status=status.HTTP_201_CREATED)
         except ValueError as exc:
             return _err(exc)
@@ -64,6 +72,7 @@ class AdminUserDetailView(APIView):
 
     def patch(self, request, user_id: int):
         try:
+            antes = UsersAdminService().get_user(user_id)
             user = UsersAdminService().update_user(user_id, request.data)
             if not user:
                 return Response({"error": "No encontrado"}, status=404)
@@ -71,13 +80,30 @@ class AdminUserDetailView(APIView):
                 PermissionsAdminService().set_role_permissions(
                     user["fk_rol"], request.data["permisos"]
                 )
+            campos = [k for k in request.data.keys() if k not in ("password",)]
+            audit_request(
+                request,
+                accion="USER_UPDATED",
+                tabla="app_usuarios",
+                detalle=f"Usuario #{user_id} modificado · campos: {', '.join(campos) or '—'}",
+                antes=antes,
+                despues=user,
+            )
             return Response(user)
         except ValueError as exc:
             return _err(exc)
 
     def delete(self, request, user_id: int):
         try:
+            antes = UsersAdminService().get_user(user_id)
             if UsersAdminService().delete_user(user_id):
+                audit_request(
+                    request,
+                    accion="USER_DELETED",
+                    tabla="app_usuarios",
+                    detalle=f"Usuario #{user_id} eliminado",
+                    antes=antes,
+                )
                 return Response(status=status.HTTP_204_NO_CONTENT)
             return Response({"error": "No encontrado"}, status=404)
         except ValueError as exc:
@@ -90,9 +116,18 @@ class AdminUserStatusView(APIView):
 
     def patch(self, request, user_id: int):
         activa = request.data.get("activa", True)
+        antes = UsersAdminService().get_user(user_id)
         user = UsersAdminService().set_account_status(user_id, bool(activa))
         if not user:
             return Response({"error": "No encontrado"}, status=404)
+        audit_request(
+            request,
+            accion="USER_STATUS_CHANGED",
+            tabla="app_usuarios",
+            detalle=f"Usuario #{user_id} → cuenta {'Activa' if activa else 'Inactiva'}",
+            antes=antes,
+            despues=user,
+        )
         return Response(user)
 
 
@@ -113,7 +148,14 @@ class AdminRolPermisosView(APIView):
 
     def put(self, request, fk_rol: int):
         codigos = request.data.get("codigos", [])
-        return Response(PermissionsAdminService().set_role_permissions(fk_rol, codigos))
+        result = PermissionsAdminService().set_role_permissions(fk_rol, codigos)
+        audit_request(
+            request,
+            accion="ROLE_PERMISSIONS_UPDATED",
+            tabla="sys_rol_permisos",
+            detalle=f"Rol #{fk_rol} · {len(codigos)} permiso(s) asignado(s)",
+        )
+        return Response(result)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -138,20 +180,25 @@ class AdminPoliticaDetailView(APIView):
         )
 
         payload = dict(request.data)
+        svc = TableCrudService("sys_politicas_seguridad")
+        antes = svc.get(row_id)
         if "valor" in payload:
-            svc = TableCrudService("sys_politicas_seguridad")
-            current = next(
-                (r for r in svc.list_all() if int(r.get("id_politica", -1)) == row_id),
-                None,
-            )
-            clave = str(payload.get("clave") or (current or {}).get("clave", ""))
+            clave = str(payload.get("clave") or (antes or {}).get("clave", ""))
             try:
                 payload["valor"] = validate_politica_value(clave, payload["valor"])
             except ValueError as exc:
                 return _err(exc)
-        row = TableCrudService("sys_politicas_seguridad").update(row_id, payload)
+        row = svc.update(row_id, payload)
         if not row:
             return Response({"error": "No encontrado"}, status=404)
+        audit_request(
+            request,
+            accion="POLICY_UPDATED",
+            tabla="sys_politicas_seguridad",
+            detalle=f"Política #{row_id} ({row.get('clave', '')}) actualizada",
+            antes=antes,
+            despues=row,
+        )
         return Response(row)
 
     def delete(self, request, row_id: int):
@@ -168,7 +215,15 @@ class AdminParametrosView(APIView):
         return Response({"items": TableCrudService("sys_parametros").list_all()})
 
     def post(self, request):
-        return Response(TableCrudService("sys_parametros").create(request.data), status=201)
+        row = TableCrudService("sys_parametros").create(request.data)
+        audit_request(
+            request,
+            accion="PARAM_CREATED",
+            tabla="sys_parametros",
+            detalle=f"Parámetro creado: {row.get('clave', '')}",
+            despues=row,
+        )
+        return Response(row, status=201)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -176,9 +231,19 @@ class AdminParametroDetailView(APIView):
     permission_classes = [IsAdminJWT]
 
     def patch(self, request, row_id: int):
-        row = TableCrudService("sys_parametros").update(row_id, request.data)
+        svc = TableCrudService("sys_parametros")
+        antes = svc.get(row_id)
+        row = svc.update(row_id, request.data)
         if not row:
             return Response({"error": "No encontrado"}, status=404)
+        audit_request(
+            request,
+            accion="PARAM_UPDATED",
+            tabla="sys_parametros",
+            detalle=f"Parámetro #{row_id} ({row.get('clave', '')}) actualizado",
+            antes=antes,
+            despues=row,
+        )
         return Response(row)
 
 
@@ -388,7 +453,15 @@ class AdminCatalogosView(APIView):
         return Response({"items": TableCrudService("sys_catalogo_delitos").list_all()})
 
     def post(self, request):
-        return Response(TableCrudService("sys_catalogo_delitos").create(request.data), status=201)
+        row = TableCrudService("sys_catalogo_delitos").create(request.data)
+        audit_request(
+            request,
+            accion="CATALOG_CREATED",
+            tabla="sys_catalogo_delitos",
+            detalle=f"Catálogo de delito creado: {row.get('nombre', row.get('clave', ''))}",
+            despues=row,
+        )
+        return Response(row, status=201)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -396,13 +469,32 @@ class AdminCatalogoDetailView(APIView):
     permission_classes = [IsAdminJWT]
 
     def patch(self, request, row_id: int):
-        row = TableCrudService("sys_catalogo_delitos").update(row_id, request.data)
+        svc = TableCrudService("sys_catalogo_delitos")
+        antes = svc.get(row_id)
+        row = svc.update(row_id, request.data)
         if not row:
             return Response({"error": "No encontrado"}, status=404)
+        audit_request(
+            request,
+            accion="CATALOG_UPDATED",
+            tabla="sys_catalogo_delitos",
+            detalle=f"Catálogo de delito #{row_id} actualizado",
+            antes=antes,
+            despues=row,
+        )
         return Response(row)
 
     def delete(self, request, row_id: int):
-        if TableCrudService("sys_catalogo_delitos").delete(row_id):
+        svc = TableCrudService("sys_catalogo_delitos")
+        antes = svc.get(row_id)
+        if svc.delete(row_id):
+            audit_request(
+                request,
+                accion="CATALOG_DELETED",
+                tabla="sys_catalogo_delitos",
+                detalle=f"Catálogo de delito #{row_id} eliminado",
+                antes=antes,
+            )
             return Response(status=204)
         return Response({"error": "No encontrado"}, status=404)
 
@@ -415,7 +507,15 @@ class AdminZonasView(APIView):
         return Response({"items": TableCrudService("sys_zonas_geograficas").list_all()})
 
     def post(self, request):
-        return Response(TableCrudService("sys_zonas_geograficas").create(request.data), status=201)
+        row = TableCrudService("sys_zonas_geograficas").create(request.data)
+        audit_request(
+            request,
+            accion="ZONE_CREATED",
+            tabla="sys_zonas_geograficas",
+            detalle=f"Zona geográfica creada: {row.get('nombre', '')}",
+            despues=row,
+        )
+        return Response(row, status=201)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -423,13 +523,32 @@ class AdminZonaDetailView(APIView):
     permission_classes = [IsAdminJWT]
 
     def patch(self, request, row_id: int):
-        row = TableCrudService("sys_zonas_geograficas").update(row_id, request.data)
+        svc = TableCrudService("sys_zonas_geograficas")
+        antes = svc.get(row_id)
+        row = svc.update(row_id, request.data)
         if not row:
             return Response({"error": "No encontrado"}, status=404)
+        audit_request(
+            request,
+            accion="ZONE_UPDATED",
+            tabla="sys_zonas_geograficas",
+            detalle=f"Zona geográfica #{row_id} actualizada",
+            antes=antes,
+            despues=row,
+        )
         return Response(row)
 
     def delete(self, request, row_id: int):
-        if TableCrudService("sys_zonas_geograficas").delete(row_id):
+        svc = TableCrudService("sys_zonas_geograficas")
+        antes = svc.get(row_id)
+        if svc.delete(row_id):
+            audit_request(
+                request,
+                accion="ZONE_DELETED",
+                tabla="sys_zonas_geograficas",
+                detalle=f"Zona geográfica #{row_id} eliminada",
+                antes=antes,
+            )
             return Response(status=204)
         return Response({"error": "No encontrado"}, status=404)
 

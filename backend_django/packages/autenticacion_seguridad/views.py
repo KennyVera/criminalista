@@ -119,10 +119,12 @@ class CloseActiveSessionView(APIView):
 
     def post(self, request, id_sesion: int):
         admin = request.crimetrack_user
+        admin_nombre = f"{admin.get('nombres', '')} {admin.get('apellidos', '')}".strip()
         try:
             result = AuthService().admin_close_session(
                 id_sesion,
                 admin_id=int(admin["id_usuario"]),
+                admin_nombre=admin_nombre,
                 ip=_client_ip(request),
             )
             return Response(result)

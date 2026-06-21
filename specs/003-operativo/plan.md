@@ -4,8 +4,10 @@
 
 ## Objetivo del Plan
 
-Dejar especificados y trazables los 60 casos de uso operativos (CU-O01…CU-O60) agrupados en los
-12 paquetes UML, listos para una futura planificación de implementación.
+Dejar especificados y trazables los 76 casos de uso operativos (CU-O01…CU-O60 + **CU-O61…CU-O76 del
+NIVEL AUDITORÍA**) agrupados en los 12 paquetes UML, listos para una futura planificación de
+implementación. La ampliación de P03 tiene su propio plan por etapas en
+`003-operativo/P03-auditoria/plan.md`.
 
 ## Secuencia Recomendada (por dependencias)
 
@@ -14,6 +16,7 @@ Dejar especificados y trazables los 60 casos de uso operativos (CU-O01…CU-O60)
 | 1 | P01 Autenticación y Seguridad | OP1 | Habilita todo acceso | Especificado |
 | 2 | P02 Administración del Sistema | OP2 | Provisión de instituciones/usuarios | Especificado |
 | 3 | P03 Auditoría y Trazabilidad | OP3 | Base legal y de cumplimiento | Especificado |
+| 3.1 | **P03 ampliación — NIVEL AUDITORÍA (CU-O61…O76)** | OP3 | Auditoría total y centralizada, transversal a P01–P12; ver `P03-auditoria/` | Especificado (pend. aprobación PC-A1…A6) |
 | 4 | P05 Gestión de Expedientes | OP5 | Núcleo del producto | Especificado |
 | 5 | P07 Gestión de Involucrados | OP7 | Datos vinculados a expedientes | Especificado |
 | 6 | P06 Gestión de Evidencias | OP6 | Custodia ligada a expedientes | Especificado |
@@ -36,6 +39,8 @@ Dejar especificados y trazables los 60 casos de uso operativos (CU-O01…CU-O60)
 | Custodia mal modelada | Invalidez legal | Reforzar RS-07/RN-02 y criterios de aceptación |
 | Predicción sin datos suficientes | Resultados poco fiables | PC-O2; marcar dependencia de datos |
 | Gráficos ilegibles | Incumple RI-04 | Estándares de visualización en `005`/`004` |
+| Auditoría sobre Parquet (no append-only) | Pérdida de inmutabilidad | Decisión PC-A1 (PostgreSQL append-only o MinIO WORM) + hash encadenado; ver `P03-auditoria/spec.md` |
+| Cobertura de auditoría incompleta (sin ORM) | Eventos no registrados | Middleware + decorador de servicios obligatorio (CU-O61) |
 
 ## Métricas de Éxito
 

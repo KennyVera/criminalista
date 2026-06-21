@@ -27,6 +27,7 @@
 | Estratégico | 10 | CU-E01…CU-E10 | P04, P09, P10, P11, P12 |
 | Táctico | 16 | CU-T01…CU-T16 | P01, P02, P03, P09, P10, P11, P12 |
 | Operativo | 60 | CU-O01…CU-O60 | P01–P12 |
+| Operativo — NIVEL AUDITORÍA (nuevos) | 16 | CU-O61…CU-O76 | P03 (transversal a P01–P12) |
 
 ## 3. Casos de Uso Estratégicos → Trazabilidad
 
@@ -71,6 +72,7 @@
 | CU-O01…O05 | P01 Autenticación y Seguridad | OP1 | A06/A01 | D06 |
 | CU-O06…O10 | P02 Administración del Sistema | OP2 | A01 | D01/D06 |
 | CU-O11…O15 | P03 Auditoría y Trazabilidad | OP3 | A05 | D06 |
+| CU-O61…O76 (NIVEL AUDITORÍA, nuevos) | P03 Auditoría y Trazabilidad (ampliación transversal) | OP3 | A05/Sistema | D06 |
 | CU-O16…O20 | P04 Dashboard y Analítica Criminal | OP4 | A03 | D07 |
 | CU-O21…O25 | P05 Gestión de Expedientes | OP5 | A02 | D07 |
 | CU-O26…O30 | P06 Gestión de Evidencias Digitales | OP6 | A04 | D07/D06 |
@@ -81,8 +83,10 @@
 | CU-O51…O55 | P11 Gestión Cloud y SLA | OP11 | A10 | D04 |
 | CU-O56…O60 | P12 Gobierno de Datos e BI | OP12 | A11 | D05 |
 
-> El detalle fila-por-fila de los 60 CU operativos (con HU, RF, criterio de aceptación y
-> resultado esperado) está en `004-uml-documentacion/matriz-trazabilidad.md`.
+> El detalle fila-por-fila de los 76 CU operativos —incluidos los **16 nuevos de auditoría**
+> CU-O61…CU-O76 (sección D)— con HU, RF, criterio de aceptación y resultado esperado está en
+> `004-uml-documentacion/matriz-trazabilidad.md`. La especificación ampliada de P03 está en
+> `003-operativo/P03-auditoria/`.
 
 ## 6. Catálogo de KPIs
 

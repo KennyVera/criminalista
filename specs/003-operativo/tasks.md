@@ -2,6 +2,7 @@
 
 > Tareas de documentación/especificación (no de código). Cada tarea corresponde a un caso de uso
 > operativo y traza a su paquete, OP y OE. Detalle del CU en `004-uml-documentacion/casos-uso.md`.
+> Incluye las tareas del **NIVEL AUDITORÍA** (CU-O61…CU-O76, T-O-A61…T-O-A76) en P03.
 
 ## P01 — Autenticación y Seguridad (OP1)
 
@@ -32,6 +33,29 @@
 | T-O-13 | CU-O13 | Especificar Exportar logs de auditoría | habilitador | Especificado |
 | T-O-14 | CU-O14 | Especificar Generar alerta de manipulación | habilitador | Especificado |
 | T-O-15 | CU-O15 | Especificar Validar cadena de custodia | habilitador | Especificado |
+
+### P03 — NIVEL AUDITORÍA (casos de uso nuevos, "Implementado adicional")
+
+> Detalle y plan de implementación por etapas en `003-operativo/P03-auditoria/` (spec/plan/tasks/checklist).
+
+| ID | CU | Tarea | OE | Estado |
+|---|---|---|---|---|
+| T-O-A61 | CU-O61 | Especificar Registrar operaciones CRUD del sistema | habilitador | Especificado |
+| T-O-A62 | CU-O62 | Especificar Auditar autenticación y sesiones | habilitador | Especificado |
+| T-O-A63 | CU-O63 | Especificar Auditar roles, permisos y privilegios | habilitador | Especificado |
+| T-O-A64 | CU-O64 | Especificar Auditar acceso a información sensible | habilitador | Especificado |
+| T-O-A65 | CU-O65 | Especificar Auditar expedientes criminales | OE4 | Especificado |
+| T-O-A66 | CU-O66 | Especificar Auditar evidencias y cadena de custodia | OE4 | Especificado |
+| T-O-A67 | CU-O67 | Especificar Auditar involucrados | OE4 | Especificado |
+| T-O-A68 | CU-O68 | Especificar Auditar reportes, archivos y exportaciones | OE4 | Especificado |
+| T-O-A69 | CU-O69 | Especificar Auditar administración y configuración | habilitador | Especificado |
+| T-O-A70 | CU-O70 | Especificar Auditar APIs e integraciones | OE2 | Especificado |
+| T-O-A71 | CU-O71 | Especificar Auditar infraestructura cloud y continuidad | OE3 | Especificado |
+| T-O-A72 | CU-O72 | Especificar Auditar analítica, BI e IA | OE4 | Especificado |
+| T-O-A73 | CU-O73 | Especificar Consultar tablero central de auditoría | habilitador | Especificado |
+| T-O-A74 | CU-O74 | Especificar Generar reportes de auditoría y cumplimiento | habilitador | Especificado |
+| T-O-A75 | CU-O75 | Especificar Verificar integridad de la auditoría | habilitador | Especificado |
+| T-O-A76 | CU-O76 | Especificar Gestionar retención y archivado de auditoría | habilitador | Especificado |
 
 ## P04 — Dashboard y Analítica Criminal (OP4)
 

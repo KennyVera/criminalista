@@ -313,7 +313,7 @@ class AssignmentService:
         self._audit(
             int(comisario["id_usuario"]),
             "ASIGNAR_DETECTIVE",
-            f"Caso {caso.get('case_number')} → {label}",
+            f"{comisario_nombre} asignó el caso {caso.get('case_number')} al detective {label}",
         )
         self._refresh_dashboard_ranking()
         return self._public_assignment(created)
@@ -353,7 +353,7 @@ class AssignmentService:
         self._audit(
             int(comisario["id_usuario"]),
             "REMOVER_DETECTIVE",
-            f"Caso {caso.get('case_number')} sin detective asignado",
+            f"{self._comisario_display(comisario)} removió al detective del caso {caso.get('case_number')}",
         )
         self._refresh_dashboard_ranking()
         return {"fk_caso": fk_caso, "case_number": caso.get("case_number"), "estado": ESTADO_REMOVIDA}

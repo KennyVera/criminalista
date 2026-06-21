@@ -80,6 +80,16 @@ class SessionService:
         self.store.write_table("app_sesiones_activas", df)
         return True
 
+    def get_session_by_id(self, id_sesion: int) -> dict[str, Any] | None:
+        """Devuelve los datos de una sesión por id (antes de cerrarla)."""
+        df = self._ensure_motivo_column(self.store.read_table("app_sesiones_activas"))
+        if df.empty:
+            return None
+        mask = df["id_sesion"] == id_sesion
+        if not mask.any():
+            return None
+        return df.loc[mask].iloc[0].to_dict()
+
     def close_session_by_id(self, id_sesion: int, *, motivo: str = MOTIVO_ADMIN) -> bool:
         df = self._ensure_motivo_column(self.store.read_table("app_sesiones_activas"))
         mask = df["id_sesion"] == id_sesion

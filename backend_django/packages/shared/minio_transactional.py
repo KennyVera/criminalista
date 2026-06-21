@@ -132,6 +132,8 @@ SCHEMAS: dict[str, list[str]] = {
         "accion",
         "tabla_afectada",
         "detalle",
+        "datos_anteriores",
+        "datos_nuevos",
         "direccion_ip",
         "fecha_hora",
     ],

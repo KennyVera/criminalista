@@ -17,6 +17,7 @@ urlpatterns = [
     path("", PackagesIndexView.as_view(), name="packages-index"),
     path("autenticacion/", include("packages.autenticacion_seguridad.urls")),
     path("administracion/", include("packages.administracion_sistema.urls")),
+    path("auditoria/", include("packages.auditoria_trazabilidad.urls")),
     path("dashboard-analitica/", include("packages.dashboard_analitica.urls")),
     path(
         "asignacion-investigaciones/",

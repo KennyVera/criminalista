@@ -1,14 +1,18 @@
 # Casos de Uso — CrimeTrack Analytics Corp
 
-> 86 casos de uso (10 estratégicos, 16 tácticos, 60 operativos). Cada caso incluye, conforme a la
+> 102 casos de uso (10 estratégicos, 16 tácticos, 76 operativos). Cada caso incluye, conforme a la
 > constitución (RD-01): **actor, objetivo, precondición, flujo principal, flujo alternativo y
-> criterio de aceptación** (Dado/Cuando/Entonces). Subordinado a `000-sistema-general/`.
+> criterio de aceptación** (Dado/Cuando/Entonces). Los **casos de uso nuevos de auditoría**
+> (CU-O61…CU-O76) incluyen además la estructura completa de 18 puntos exigida para P03.
+> Subordinado a `000-sistema-general/`.
 
 ## Índice
 
 - Estratégicos: CU-E01…CU-E10 (Nivel estratégico).
 - Tácticos: CU-T01…CU-T16 (Nivel táctico).
 - Operativos: CU-O01…CU-O60 (Nivel operativo, P01–P12).
+- **Operativos — NIVEL AUDITORÍA (NUEVOS):** CU-O61…CU-O76 (Nivel operativo, P03). Ver sección
+  **"CASOS DE USO NUEVOS — NIVEL AUDITORÍA (P03)"**.
 
 ---
 
@@ -315,6 +319,10 @@
 - **Criterio de aceptación:** Dado un contrato, Cuando se registra con SLA, Entonces queda vigente y vinculado al cliente.
 
 ## P03 — Auditoría y Trazabilidad (OP3)
+
+> **CU-O11…CU-O15 se conservan, completan y amplían** (no cambian de código). Su versión ampliada
+> se integra al modelo centralizado de auditoría descrito en los casos nuevos CU-O61…CU-O76
+> (ver sección **"CASOS DE USO NUEVOS — NIVEL AUDITORÍA (P03)"** y `003-operativo/P03-auditoria/`).
 
 ### CU-O11 — Registrar bitácora de acceso
 - **Actor:** Sistema (disparado por A06). **Paquete:** P03. **OE/OT:** habilitador/OT5.
@@ -733,6 +741,291 @@
 - **Flujo principal:** 1) Selecciona horizonte. 2) Ejecuta forecast. 3) Visualiza con confianza.
 - **Flujo alternativo:** escenarios (optimista/base/pesimista).
 - **Criterio de aceptación:** Dado un horizonte, Cuando se ejecuta el forecast, Entonces se obtiene una proyección con su precisión (KPI-11).
+
+---
+
+# CASOS DE USO NUEVOS — NIVEL AUDITORÍA (P03)
+
+> **Implementado adicional.** Amplían el paquete **P03 — Auditoría y Trazabilidad** sin eliminar ni
+> cambiar CU-O11…CU-O15. Cada caso incluye la estructura completa de 18 puntos exigida: código,
+> nombre, objetivo, actor principal, actores secundarios, paquete UML, precondiciones, entradas,
+> flujo principal, flujos alternativos, excepciones, salidas, reglas de negocio, requisitos
+> funcionales, requisitos no funcionales, criterios de aceptación (Dado/Cuando/Entonces),
+> dependencias y fuera de alcance. Actor principal por defecto: **A05 Auditor / Oficial de
+> Cumplimiento**; actor disparador frecuente: **Sistema**. Detalle de arquitectura y modelo de
+> datos en `003-operativo/P03-auditoria/spec.md`.
+
+### CU-O61 — Registrar operaciones CRUD del sistema
+- **Código:** CU-O61. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** registrar toda operación de escritura del sistema (INSERT, UPDATE, DELETE, consulta sensible, restauración, cambio de estado, asignación, vinculación, desvinculación) con valores antes/después.
+- **Actor principal:** Sistema (auditoría automática). **Actores secundarios:** A06 Usuario Institucional, A05 Auditor.
+- **Precondiciones:** usuario autenticado con sesión válida; servicio de auditoría disponible.
+- **Entradas:** contexto de la operación (usuario, sesión, módulo, caso de uso, entidad, tabla, id de registro, valores previos y nuevos, motivo si aplica).
+- **Flujo principal:** 1) El servicio ejecuta una operación de escritura. 2) El decorador `@audited` captura valores antes/después. 3) `AuditService.record()` normaliza, enmascara datos sensibles y calcula `event_hash`+`previous_hash`. 4) Persiste append-only en `audit_events` (+ `audit_event_changes`). 5) Devuelve sin bloquear la operación (escritura asíncrona).
+- **Flujos alternativos:** FA1 eliminación → se conserva copia histórica del valor borrado. FA2 operación masiva → genera evento `BULK_OPERATION` y posible alerta.
+- **Excepciones:** EX1 fallo del servicio de auditoría → encola en buffer y genera alerta (no se pierde el evento). EX2 dato sensible no enmascarable → se omite el valor y se marca.
+- **Salidas:** evento de auditoría inmutable con diferencias antes/después.
+- **Reglas de negocio:** RN-02, RS-05; logs append-only; tiempo en servidor UTC.
+- **Requisitos funcionales:** RF-O-P03-01, RF-O-P03-02, RF-O-P03-03.
+- **Requisitos no funcionales:** RNF-O-P03-01, RNF-O-P03-05, RNF-O-P03-07.
+- **Criterio de aceptación:** Dado un INSERT/UPDATE/DELETE sobre una entidad, Cuando se ejecuta, Entonces se registra un evento inmutable con usuario, rol, registro afectado y valores anterior/nuevo.
+- **Dependencias:** P01 (sesión/JWT), núcleo de auditoría (Etapa 1).
+- **Fuera de alcance:** RBAC fino (se registra el rol efectivo).
+
+### CU-O62 — Auditar autenticación y sesiones
+- **Código:** CU-O62. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** registrar todo el ciclo de autenticación y sesión: login exitoso/fallido, logout manual/expiración/administrativo, revocación, bloqueo/desbloqueo, recuperación y cambio de contraseña, MFA (activación/validación/fallo), inicio/fin/duración de sesión, última actividad, inactividad, sesiones simultáneas, dispositivo, IP, navegador y SO.
+- **Actor principal:** Sistema. **Actores secundarios:** A06 Usuario, A01 Administrador, A05 Auditor.
+- **Precondiciones:** servicio de autenticación operativo.
+- **Entradas:** credenciales/eventos de sesión, IP, User-Agent, método de autenticación, estado MFA.
+- **Flujo principal:** 1) Ocurre un evento de auth/sesión. 2) `AuthService` lo notifica a `AuditService`. 3) Se registra en `audit_events` y se actualiza `audit_sessions` (inicio, última actividad, cierre, duración). 4) Se calcula duración al cerrar.
+- **Flujos alternativos:** FA1 cierre administrativo de sesión → motivo `admin_cerrada`. FA2 expiración → motivo `expirada`.
+- **Excepciones:** EX1 múltiples intentos fallidos → bloqueo + alerta (FASE 5). EX2 fallo MFA reiterado → alerta.
+- **Salidas:** eventos de sesión y registro de duración total.
+- **Reglas de negocio:** RS-04 (MFA roles críticos), append-only, UTC.
+- **Requisitos funcionales:** RF-O-P03-04, RF-O-P03-05.
+- **Requisitos no funcionales:** RNF-O-P03-01, RNF-O-P03-04.
+- **Criterio de aceptación:** Dado un inicio y cierre de sesión, Cuando ocurren, Entonces se registran inicio, última actividad, cierre y duración, con IP, dispositivo y navegador.
+- **Dependencias:** P01.
+- **Fuera de alcance:** implementación de MFA (se audita cuando exista).
+
+### CU-O63 — Auditar roles, permisos y privilegios
+- **Código:** CU-O63. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** registrar creación/modificación/eliminación de roles, asignación/retiro de roles, cambios de permisos, elevación de privilegios, accesos denegados, intentos no autorizados, cambios por administradores y el rol efectivo usado en cada operación.
+- **Actor principal:** Sistema. **Actores secundarios:** A01 Administrador, A05 Auditor.
+- **Precondiciones:** módulo de administración de roles disponible.
+- **Entradas:** rol, permiso, usuario afectado, administrador responsable, resultado.
+- **Flujo principal:** 1) Se ejecuta una acción de RBAC. 2) Se captura antes/después. 3) Se registra evento con rol efectivo y resultado.
+- **Flujos alternativos:** FA1 acceso denegado por permiso → evento `ACCESS_DENIED`.
+- **Excepciones:** EX1 elevación de privilegios → alerta de seguridad.
+- **Salidas:** evento de cambio de RBAC con rol efectivo.
+- **Reglas de negocio:** RS-02 (denegar sin permiso), privilegio mínimo.
+- **Requisitos funcionales:** RF-O-P03-05.
+- **Requisitos no funcionales:** RNF-O-P03-01, RNF-O-P03-03.
+- **Criterio de aceptación:** Dada una asignación de rol o un acceso denegado, Cuando ocurre, Entonces queda registrado con usuario, administrador, permiso y resultado.
+- **Dependencias:** P02, RBAC.
+- **Fuera de alcance:** activar el RBAC fino (PC-A6).
+
+### CU-O64 — Auditar acceso a información sensible
+- **Código:** CU-O64. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** registrar el acceso a información sensible (expedientes, evidencias, víctimas, sospechosos, testigos, información personal/reservada, cadena de custodia, informes, datos analíticos restringidos, documentos clasificados), distinguiendo el modo (consulta, visualización, descarga, impresión, exportación, modificación, eliminación, compartición).
+- **Actor principal:** Sistema. **Actores secundarios:** A02 Investigador, A03 Analista, A05 Auditor.
+- **Precondiciones:** entidad clasificada como sensible.
+- **Entradas:** entidad, id de registro, modo de acceso, clasificación.
+- **Flujo principal:** 1) Un usuario accede a un recurso sensible. 2) El helper `audit_access` registra el evento y el modo. 3) Se persiste en `audit_access_events` ligado a `audit_events`.
+- **Flujos alternativos:** FA1 descarga/exportación → además registra en `audit_exports`.
+- **Excepciones:** EX1 acceso repetido a expedientes no asignados → alerta.
+- **Salidas:** evento de acceso con modo y clasificación.
+- **Reglas de negocio:** RS-03 (mínimo privilegio), enmascaramiento.
+- **Requisitos funcionales:** RF-O-P03-06.
+- **Requisitos no funcionales:** RNF-O-P03-03, RNF-O-P03-07.
+- **Criterio de aceptación:** Dado un acceso a información sensible, Cuando se realiza, Entonces se registra quién, qué registro y el modo (consulta/descarga/exportación…).
+- **Dependencias:** P05, P06, P07, P08.
+- **Fuera de alcance:** clasificación automática de sensibilidad (se usa la definida).
+
+### CU-O65 — Auditar expedientes criminales
+- **Código:** CU-O65. **Paquete UML:** P03. **OE/OT:** OE4/OT6.
+- **Objetivo:** registrar el ciclo de vida del expediente: creación, usuario creador, investigador asignado, reasignaciones, cambios de estado y motivo, delitos/evidencias/involucrados vinculados y desvinculados, intentos de cierre, cierre aprobado/rechazado, reapertura y motivo, e historial completo.
+- **Actor principal:** Sistema. **Actores secundarios:** A02 Investigador, A01 Administrador, A05 Auditor.
+- **Precondiciones:** módulo de expedientes (P05) operativo.
+- **Entradas:** expediente, usuario, estado, motivo, entidades vinculadas.
+- **Flujo principal:** 1) Ocurre una operación sobre el expediente. 2) Se captura antes/después y motivo. 3) Se registra evento trazable al folio del caso.
+- **Flujos alternativos:** FA1 cierre rechazado → se registra motivo. FA2 reapertura → motivo obligatorio.
+- **Excepciones:** EX1 transición de estado inválida → evento `ACCESS_DENIED`/rechazo.
+- **Salidas:** historial completo del expediente reconstruible.
+- **Reglas de negocio:** RN-09 (cierre con completitud).
+- **Requisitos funcionales:** RF-O-P03-01, RF-O-P03-02.
+- **Requisitos no funcionales:** RNF-O-P03-01.
+- **Criterio de aceptación:** Dado un cambio de estado o reasignación de expediente, Cuando ocurre, Entonces el historial registra el antes/después, el usuario y el motivo.
+- **Dependencias:** P05, CU-O61.
+- **Fuera de alcance:** lógica de negocio del expediente (solo se audita).
+
+### CU-O66 — Auditar evidencias y cadena de custodia
+- **Código:** CU-O66. **Paquete UML:** P03. **OE/OT:** OE4/OT6.
+- **Objetivo:** registrar registro de evidencia, carga de archivo (nombre, tamaño, MIME), hash inicial y recálculo, resultado de verificación, custodio inicial, transferencias (fecha/hora, custodio anterior/nuevo, motivo, ubicación), descargas/consultas, rupturas de cadena, intentos de modificación, eliminaciones bloqueadas y alertas de integridad.
+- **Actor principal:** Sistema. **Actores secundarios:** A04 Custodio, A02 Investigador, A05 Auditor.
+- **Precondiciones:** módulo de evidencias (P06) operativo.
+- **Entradas:** evidencia, archivo, hash, custodios, motivo de transferencia.
+- **Flujo principal:** 1) Se registra/transfiere una evidencia. 2) Se calcula/recalcula hash. 3) Se registra evento en `audit_evidence_events` y la transferencia en `audit_custody_events`.
+- **Flujos alternativos:** FA1 recálculo de verificación periódica.
+- **Excepciones:** EX1 hash no coincide → `CUSTODY_BROKEN` + alerta (habilita CU-O14/CU-O15). EX2 intento de eliminar evidencia → bloqueo + registro.
+- **Salidas:** cadena de custodia trazable e íntegra.
+- **Reglas de negocio:** RS-07, RN-02.
+- **Requisitos funcionales:** RF-O-P03-13.
+- **Requisitos no funcionales:** RNF-O-P03-02.
+- **Criterio de aceptación:** Dada una transferencia de custodia, Cuando se registra, Entonces se conserva custodio anterior/nuevo, fecha, motivo y el hash verificable; una ruptura genera alerta.
+- **Dependencias:** P06, CU-O28 (hash), CU-O15.
+- **Fuera de alcance:** almacenamiento físico de la evidencia.
+
+### CU-O67 — Auditar involucrados
+- **Código:** CU-O67. **Paquete UML:** P03. **OE/OT:** OE4/OT6.
+- **Objetivo:** registrar creación de víctimas/sospechosos/testigos, actualización de información, acceso a datos protegidos, cambios de nivel de confidencialidad, vinculación/desvinculación a expedientes, usuario responsable, motivo y valores anterior/nuevo.
+- **Actor principal:** Sistema. **Actores secundarios:** A02 Investigador, A05 Auditor.
+- **Precondiciones:** módulo de involucrados (P07) operativo.
+- **Entradas:** involucrado, datos protegidos, nivel de confidencialidad, expediente.
+- **Flujo principal:** 1) Operación sobre involucrado. 2) Captura antes/después y motivo. 3) Registra evento (acceso a datos protegidos vía CU-O64).
+- **Flujos alternativos:** FA1 cambio de confidencialidad → evento específico.
+- **Excepciones:** EX1 acceso a dato protegido sin permiso → denegado y registrado.
+- **Salidas:** historial de cambios del involucrado.
+- **Reglas de negocio:** protección de datos personales, enmascaramiento.
+- **Requisitos funcionales:** RF-O-P03-01, RF-O-P03-06.
+- **Requisitos no funcionales:** RNF-O-P03-07.
+- **Criterio de aceptación:** Dada una actualización de un involucrado, Cuando ocurre, Entonces se registra el responsable, el motivo y los valores anterior/nuevo enmascarados.
+- **Dependencias:** P07, CU-O64.
+- **Fuera de alcance:** anonimización irreversible.
+
+### CU-O68 — Auditar reportes, archivos y exportaciones
+- **Código:** CU-O68. **Paquete UML:** P03. **OE/OT:** OE4/OT6.
+- **Objetivo:** registrar generación de reportes (tipo, parámetros/filtros, rango de fechas, solicitante, formato), exportaciones PDF/Excel, descargas, impresiones, envío por correo y destinatarios, programación automática, cancelaciones, resultado, tamaño del archivo, marca de agua y motivo de exportación de información sensible.
+- **Actor principal:** Sistema. **Actores secundarios:** A06 Usuario, A05 Auditor.
+- **Precondiciones:** módulo de reportería (P08) operativo.
+- **Entradas:** parámetros del reporte, formato, destinatarios, motivo.
+- **Flujo principal:** 1) Se genera/exporta un reporte. 2) Se registra en `audit_exports` ligado a `audit_events`. 3) Se aplica marca de agua si corresponde.
+- **Flujos alternativos:** FA1 programación automática. FA2 cancelación de exportación.
+- **Excepciones:** EX1 exportación masiva → alerta.
+- **Salidas:** evento de exportación auditado.
+- **Reglas de negocio:** RN-08 (exportaciones auditadas).
+- **Requisitos funcionales:** RF-O-P03-01 (extiende CU-O13).
+- **Requisitos no funcionales:** RNF-O-P03-03.
+- **Criterio de aceptación:** Dada una exportación, Cuando se realiza, Entonces se registra el solicitante, formato, parámetros, destinatarios y motivo (si es sensible).
+- **Dependencias:** P08, CU-O13.
+- **Fuera de alcance:** entrega/transporte del correo.
+
+### CU-O69 — Auditar administración y configuración
+- **Código:** CU-O69. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** registrar cambios de parámetros y catálogos, registro/modificación de instituciones, configuración multi-tenant, activación/desactivación de módulos, cambios de licencia/plan/SLA, configuración de almacenamiento y seguridad, políticas de retención y activación/desactivación de funcionalidades.
+- **Actor principal:** Sistema. **Actores secundarios:** A01 Administrador, A05 Auditor.
+- **Precondiciones:** módulo de administración (P02) operativo.
+- **Entradas:** parámetro/catálogo/configuración, valor anterior y nuevo.
+- **Flujo principal:** 1) Se cambia una configuración. 2) Se captura antes/después. 3) Se registra evento `CONFIG_CHANGED`.
+- **Flujos alternativos:** FA1 cambio de licencia/plan/SLA.
+- **Excepciones:** EX1 cambio de configuración crítica → alerta.
+- **Salidas:** evento de configuración auditado.
+- **Reglas de negocio:** append-only, UTC.
+- **Requisitos funcionales:** RF-O-P03-01.
+- **Requisitos no funcionales:** RNF-O-P03-01.
+- **Criterio de aceptación:** Dado un cambio de parámetro o configuración, Cuando se guarda, Entonces se registra el responsable y los valores anterior/nuevo.
+- **Dependencias:** P02.
+- **Fuera de alcance:** implementación de multi-tenant (PC-A2).
+
+### CU-O70 — Auditar APIs e integraciones
+- **Código:** CU-O70. **Paquete UML:** P03. **OE/OT:** OE2/OT2.
+- **Objetivo:** registrar creación/revocación/rotación de API keys, scopes, institución propietaria, endpoint consumido, método HTTP, código de respuesta, tiempo de respuesta, IP, sistema externo, datos transferidos, errores de integración, fallos de autenticación, webhooks enviados/fallidos, reintentos y conectores activados/desactivados. **Nunca** registra tokens, contraseñas, secretos ni API keys completas.
+- **Actor principal:** Sistema. **Actores secundarios:** A10 SRE, A14 Sistema Externo, A05 Auditor.
+- **Precondiciones:** ecosistema de APIs (P10) operativo.
+- **Entradas:** referencia parcial de API key, scopes, endpoint, método, código, latencia.
+- **Flujo principal:** 1) Se consume una API o gestiona una key. 2) El middleware registra en `audit_api_events`. 3) Se enmascaran/omiten secretos.
+- **Flujos alternativos:** FA1 webhook fallido → reintentos registrados.
+- **Excepciones:** EX1 API key comprometida o consumo fuera de límite → alerta.
+- **Salidas:** evento de API sin secretos.
+- **Reglas de negocio:** RS-06 (no almacenar secretos), enmascaramiento.
+- **Requisitos funcionales:** RF-O-P03-14.
+- **Requisitos no funcionales:** RNF-O-P03-07.
+- **Criterio de aceptación:** Dada una llamada API, Cuando se procesa, Entonces se registra endpoint, método, código y latencia sin almacenar el token/API key completos.
+- **Dependencias:** P10.
+- **Fuera de alcance:** rate limiting (solo se audita).
+
+### CU-O71 — Auditar infraestructura cloud y continuidad
+- **Código:** CU-O71. **Paquete UML:** P03. **OE/OT:** OE3/OT3.
+- **Objetivo:** registrar eventos de monitoreo, caídas, reinicios, escalamiento/desescalamiento, creación/eliminación de recursos, ejecución y resultado de backups, restauraciones, recuperación ante desastres, incidentes SLA (severidad, tiempos de detección/respuesta/resolución, RTO/RPO logrados), cambios de configuración cloud y usuario/proceso responsable.
+- **Actor principal:** Sistema. **Actores secundarios:** A10 SRE, A05 Auditor.
+- **Precondiciones:** gestión cloud (P11) operativa.
+- **Entradas:** evento de infraestructura, severidad, tiempos, responsable.
+- **Flujo principal:** 1) Ocurre un evento cloud/continuidad. 2) Se registra evento (`BACKUP_*`, `RESTORE_*`, `SLA_INCIDENT`). 3) Se asocia responsable.
+- **Flujos alternativos:** FA1 escalamiento automático.
+- **Excepciones:** EX1 backup fallido / restauración no autorizada → alerta.
+- **Salidas:** evento de continuidad auditado.
+- **Reglas de negocio:** trazabilidad de continuidad.
+- **Requisitos funcionales:** RF-O-P03-01.
+- **Requisitos no funcionales:** RNF-O-P03-08.
+- **Criterio de aceptación:** Dada una ejecución de backup o un incidente SLA, Cuando ocurre, Entonces se registra el resultado, los tiempos y el responsable.
+- **Dependencias:** P11.
+- **Fuera de alcance:** ejecución del backup/DR (solo se audita).
+
+### CU-O72 — Auditar analítica, BI e inteligencia artificial
+- **Código:** CU-O72. **Paquete UML:** P03. **OE/OT:** OE4/OT4.
+- **Objetivo:** registrar consultas a dashboards, filtros aplicados, KPI consultados/recalculados, exportación de tableros, ejecución de modelos predictivos (modelo, versión, parámetros, dataset, fecha, resultado, nivel de confianza, solicitante), cambios en fórmulas de KPI, cambios en fuentes de datos y ejecuciones fallidas.
+- **Actor principal:** Sistema. **Actores secundarios:** A03 Analista, A11 Analista BI, A05 Auditor.
+- **Precondiciones:** analítica (P04/P12) operativa.
+- **Entradas:** consulta/modelo, parámetros, dataset, versión.
+- **Flujo principal:** 1) Se ejecuta una consulta/modelo. 2) Se registra evento con parámetros y resultado. 3) Se versiona el modelo usado.
+- **Flujos alternativos:** FA1 recálculo de KPI.
+- **Excepciones:** EX1 ejecución fallida → registrada con error controlado.
+- **Salidas:** evento analítico trazable.
+- **Reglas de negocio:** trazabilidad de fórmulas y datasets.
+- **Requisitos funcionales:** RF-O-P03-01, RF-O-P03-06.
+- **Requisitos no funcionales:** RNF-O-P03-06.
+- **Criterio de aceptación:** Dada una ejecución de modelo predictivo, Cuando se realiza, Entonces se registra modelo, versión, parámetros, dataset y resultado.
+- **Dependencias:** P04, P12.
+- **Fuera de alcance:** entrenamiento de modelos.
+
+### CU-O73 — Consultar tablero central de auditoría
+- **Código:** CU-O73. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** permitir buscar/filtrar eventos por usuario, rol, institución, módulo, caso de uso, entidad, registro, operación, IP, sesión, rango de fechas, resultado, nivel de riesgo y evento de seguridad; visualizar línea de tiempo, comparar antes/después, ver duración de sesiones, acciones por usuario/módulo, accesos denegados y eventos críticos.
+- **Actor principal:** A05 Auditor / Oficial de Cumplimiento. **Actores secundarios:** A01 Administrador (limitado).
+- **Precondiciones:** eventos registrados; rol Auditor/Compliance; endpoint de consulta implementado.
+- **Entradas:** filtros de búsqueda.
+- **Flujo principal:** 1) El auditor abre el tablero. 2) Aplica filtros avanzados. 3) El sistema devuelve resultados paginados, línea de tiempo y detalle antes/después, respetando aislamiento multi-tenant.
+- **Flujos alternativos:** FA1 sin resultados → aviso. FA2 ver detalle de un evento → reconstrucción completa.
+- **Excepciones:** EX1 usuario sin rol Auditor → acceso denegado y auditado.
+- **Salidas:** vista de auditoría consultable y reconstrucción de operaciones.
+- **Reglas de negocio:** solo Auditor/Compliance; aislamiento multi-tenant.
+- **Requisitos funcionales:** RF-O-P03-09 (extiende CU-O12).
+- **Requisitos no funcionales:** RNF-O-P03-03, RNF-O-P03-06, RNF-O-P03-09.
+- **Criterio de aceptación:** Dado un auditor, Cuando filtra por usuario/rol/sesión/módulo/CU/entidad/fecha/IP, Entonces obtiene la traza completa, paginada y legible.
+- **Dependencias:** núcleo de auditoría, paquete `auditoria_trazabilidad` (hoy vacío).
+- **Fuera de alcance:** edición de eventos (son inmutables).
+
+### CU-O74 — Generar reportes de auditoría y cumplimiento
+- **Código:** CU-O74. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** generar reportes de actividad por usuario/rol/institución/módulo, sesiones, operaciones CRUD, eliminaciones, cambios críticos, accesos a información sensible, exportaciones, evidencias, cadena de custodia, fallos de autenticación, accesos denegados, actividad fuera de horario, alertas, integridad y cumplimiento.
+- **Actor principal:** A05 Auditor / Oficial de Cumplimiento. **Actores secundarios:** A07 Ejecutivo (lectura).
+- **Precondiciones:** eventos disponibles; permiso de reporte.
+- **Entradas:** tipo de reporte, periodo, filtros.
+- **Flujo principal:** 1) Selecciona el tipo de reporte. 2) Define periodo/filtros. 3) Genera y exporta de forma **autorizada y auditada** (la exportación queda registrada).
+- **Flujos alternativos:** FA1 programación periódica del reporte.
+- **Excepciones:** EX1 sin permiso → denegado.
+- **Salidas:** reporte de cumplimiento exportable y auditado.
+- **Reglas de negocio:** RN-08; toda exportación se audita.
+- **Requisitos funcionales:** RF-O-P03-10 (extiende CU-O13).
+- **Requisitos no funcionales:** RNF-O-P03-03, RNF-O-P03-09.
+- **Criterio de aceptación:** Dado un periodo, Cuando genera un reporte de cumplimiento, Entonces obtiene un documento legible y la exportación queda registrada.
+- **Dependencias:** CU-O73, CU-O68.
+- **Fuera de alcance:** envío externo a SIEM (extensión futura).
+
+### CU-O75 — Verificar integridad de la auditoría
+- **Código:** CU-O75. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** validar que los logs no fueron modificados: hash por evento, relación con el hash anterior, detección de ruptura de cadena, validación de firma/sello de tiempo, verificaciones periódicas, generación de evidencias de integridad y notificación de cualquier alteración.
+- **Actor principal:** Sistema (job programado). **Actores secundarios:** A05 Auditor.
+- **Precondiciones:** eventos con `event_hash`/`previous_hash`.
+- **Entradas:** rango de eventos a verificar.
+- **Flujo principal:** 1) Un job (Celery beat) recorre la cadena. 2) Recalcula y compara hashes. 3) Registra el resultado en `audit_integrity_checks`.
+- **Flujos alternativos:** FA1 verificación bajo demanda por el auditor.
+- **Excepciones:** EX1 ruptura de cadena → `SECURITY_ALERT` (amplía CU-O14).
+- **Salidas:** evidencia de integridad y alertas ante alteración.
+- **Reglas de negocio:** RN-02; inmutabilidad.
+- **Requisitos funcionales:** RF-O-P03-07, RF-O-P03-08, RF-O-P03-11.
+- **Requisitos no funcionales:** RNF-O-P03-02.
+- **Criterio de aceptación:** Dada una manipulación de un log, Cuando se ejecuta la verificación, Entonces se detecta la ruptura de la cadena y se notifica.
+- **Dependencias:** núcleo de auditoría, Celery beat.
+- **Fuera de alcance:** firma con HSM externo (PC-A4).
+
+### CU-O76 — Gestionar retención y archivado de auditoría
+- **Código:** CU-O76. **Paquete UML:** P03. **OE/OT:** habilitador/OT5.
+- **Objetivo:** definir políticas de retención, archivar logs antiguos, mantener acceso controlado a históricos, aplicar retención legal, suspender eliminación por investigación, registrar quién autorizó el archivado, registrar restauración de históricos y evitar eliminación manual no autorizada.
+- **Actor principal:** A05 Auditor / Oficial de Cumplimiento. **Actores secundarios:** A01 Administrador.
+- **Precondiciones:** políticas de retención definidas por institución.
+- **Entradas:** política, rango a archivar, autorización.
+- **Flujo principal:** 1) Se aplica la política de retención. 2) Se archivan logs antiguos en `audit_archives` conservando integridad. 3) Se registra quién autorizó.
+- **Flujos alternativos:** FA1 suspensión de eliminación por investigación (retención legal). FA2 restauración de históricos.
+- **Excepciones:** EX1 intento de eliminación manual no autorizada → bloqueo + alerta.
+- **Salidas:** históricos archivados, accesibles y auditados.
+- **Reglas de negocio:** retención configurable por institución; conservación legal de eventos críticos.
+- **Requisitos funcionales:** RF-O-P03-12.
+- **Requisitos no funcionales:** RNF-O-P03-01, RNF-O-P03-02.
+- **Criterio de aceptación:** Dada una política de retención, Cuando vence un rango, Entonces los logs se archivan sin perder integridad y el archivado queda autorizado y registrado.
+- **Dependencias:** núcleo de auditoría, almacenamiento (PC-A1).
+- **Fuera de alcance:** borrado físico definitivo (sujeto a política legal).
 
 ---
 

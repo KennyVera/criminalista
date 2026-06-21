@@ -19,7 +19,6 @@ import StatCard from '../components/layout/StatCard'
 import UserCell from '../components/layout/UserCell'
 import TablePagination from '../components/layout/TablePagination'
 import InfoPanel from '../components/layout/InfoPanel'
-import RowActionsMenu from '../components/layout/RowActionsMenu'
 import { useToast } from '../context/ToastContext'
 
 function formatDate(value) {
@@ -191,17 +190,20 @@ export default function ActiveSessionsPage() {
                         <Badge tone="active">Activa</Badge>
                       </td>
                       <td className="text-center">
-                        <RowActionsMenu
-                          items={[
-                            {
-                              label: 'Cerrar sesión',
-                              icon: LogOut,
-                              danger: true,
-                              disabled: closingId === row.id_sesion,
-                              onClick: () => handleCloseSession(row),
-                            },
-                          ]}
-                        />
+                        <button
+                          type="button"
+                          onClick={() => handleCloseSession(row)}
+                          disabled={closingId === row.id_sesion}
+                          title="Cerrar sesión"
+                          aria-label="Cerrar sesión"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[#EF4444] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {closingId === row.id_sesion ? (
+                            <Spinner size="sm" />
+                          ) : (
+                            <LogOut className="h-4 w-4" />
+                          )}
+                        </button>
                       </td>
                     </tr>
                   ))}

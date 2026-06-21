@@ -33,7 +33,7 @@ export default function TablePagination({
           <select
             value={perPage}
             onChange={(e) => onPerPageChange(Number(e.target.value))}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-black"
             aria-label="Registros por página"
           >
             {[10, 20, 25, 50].map((n) => (

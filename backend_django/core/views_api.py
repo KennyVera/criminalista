@@ -79,6 +79,45 @@ def _minio_error(exc: Exception) -> Response:
 
 
 
+def _collection_label(collection: str) -> str:
+    from core.collections_meta import COLLECTIONS
+
+    return (COLLECTIONS.get(collection, {}) or {}).get("label", collection)
+
+
+def _audit_collection_event(
+    request, *, accion: str, collection: str, detalle: str, antes=None, despues=None
+) -> None:
+    """Audita operaciones CRUD sobre las tablas/datasets genéricos (Explorar tablas)."""
+    from packages.shared.audit import client_ip, record_audit
+
+    fk = None
+    actor = "Sistema"
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            from packages.autenticacion_seguridad.services.auth_service import AuthService
+
+            u = AuthService().me_from_token(auth[7:].strip())
+            fk = int(u["id_usuario"])
+            actor = (
+                f"{u.get('nombres', '')} {u.get('apellidos', '')}".strip()
+                or u.get("email")
+                or "Sistema"
+            )
+        except Exception:
+            fk, actor = None, "Sistema"
+    record_audit(
+        fk_usuario=fk,
+        accion=accion,
+        tabla=collection,
+        detalle=f"{actor} {detalle}",
+        ip=client_ip(request),
+        antes=antes,
+        despues=despues,
+    )
+
+
 class CollectionsMetaView(APIView):
 
     authentication_classes = []
@@ -292,6 +331,14 @@ class CollectionRecordsView(APIView):
 
                 record = _minio_store().create_record(collection, request.data)
 
+                _audit_collection_event(
+                    request,
+                    accion="RECORD_CREATED",
+                    collection=collection,
+                    detalle=f"creó un registro en la tabla «{_collection_label(collection)}»",
+                    despues=record,
+                )
+
                 return Response(record, status=status.HTTP_201_CREATED)
 
             except Exception as exc:
@@ -303,6 +350,14 @@ class CollectionRecordsView(APIView):
             with _pb_client() as client:
 
                 record = client.create_record(collection, request.data)
+
+                _audit_collection_event(
+                    request,
+                    accion="RECORD_CREATED",
+                    collection=collection,
+                    detalle=f"creó un registro en la tabla «{_collection_label(collection)}»",
+                    despues=record,
+                )
 
                 return Response(record, status=status.HTTP_201_CREATED)
 
@@ -368,7 +423,26 @@ class CollectionRecordDetailView(APIView):
 
             try:
 
-                record = _minio_store().update_record(collection, record_id, request.data)
+                store = _minio_store()
+
+                try:
+
+                    antes = store.get_record(collection, record_id)
+
+                except Exception:
+
+                    antes = None
+
+                record = store.update_record(collection, record_id, request.data)
+
+                _audit_collection_event(
+                    request,
+                    accion="RECORD_UPDATED",
+                    collection=collection,
+                    detalle=f"actualizó el registro #{record_id} en la tabla «{_collection_label(collection)}»",
+                    antes=antes,
+                    despues=record,
+                )
 
                 return Response(record)
 
@@ -384,7 +458,26 @@ class CollectionRecordDetailView(APIView):
 
             with _pb_client() as client:
 
-                return Response(client.update_record(collection, record_id, request.data))
+                try:
+
+                    antes = client.get_record(collection, record_id)
+
+                except Exception:
+
+                    antes = None
+
+                record = client.update_record(collection, record_id, request.data)
+
+                _audit_collection_event(
+                    request,
+                    accion="RECORD_UPDATED",
+                    collection=collection,
+                    detalle=f"actualizó el registro #{record_id} en la tabla «{_collection_label(collection)}»",
+                    antes=antes,
+                    despues=record,
+                )
+
+                return Response(record)
 
         except PocketBaseError as exc:
 
@@ -402,7 +495,25 @@ class CollectionRecordDetailView(APIView):
 
             try:
 
-                _minio_store().delete_record(collection, record_id)
+                store = _minio_store()
+
+                try:
+
+                    antes = store.get_record(collection, record_id)
+
+                except Exception:
+
+                    antes = None
+
+                store.delete_record(collection, record_id)
+
+                _audit_collection_event(
+                    request,
+                    accion="RECORD_DELETED",
+                    collection=collection,
+                    detalle=f"eliminó el registro #{record_id} de la tabla «{_collection_label(collection)}»",
+                    antes=antes,
+                )
 
                 return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -414,7 +525,23 @@ class CollectionRecordDetailView(APIView):
 
             with _pb_client() as client:
 
+                try:
+
+                    antes = client.get_record(collection, record_id)
+
+                except Exception:
+
+                    antes = None
+
                 client.delete_record(collection, record_id)
+
+                _audit_collection_event(
+                    request,
+                    accion="RECORD_DELETED",
+                    collection=collection,
+                    detalle=f"eliminó el registro #{record_id} de la tabla «{_collection_label(collection)}»",
+                    antes=antes,
+                )
 
                 return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -36,6 +36,21 @@ class TableCrudService:
         rows = df.to_dict(orient="records")
         return [self._normalize_row(r) for r in rows]
 
+    def get(self, row_id: int) -> dict[str, Any] | None:
+        from packages.administracion_sistema.storage import ID_COL
+
+        df = self.store.read_table(self.table)
+        id_col = ID_COL.get(self.table)
+        if not id_col or df.empty:
+            return None
+        try:
+            mask = df[id_col].astype(int) == int(row_id)
+        except (TypeError, ValueError):
+            return None
+        if not mask.any():
+            return None
+        return self._normalize_row(df[mask].iloc[0].to_dict())
+
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
         row = self.store.append_row(self.table, data)
         return self._normalize_row(row)

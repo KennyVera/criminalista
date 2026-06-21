@@ -15,6 +15,7 @@ import AsignarDetectivePage from '../pages/investigaciones/AsignarDetectivePage'
 import ProgresoInvestigacionPage from '../pages/investigaciones/ProgresoInvestigacionPage'
 import ExpedienteDetailPage from '../pages/expedientes/ExpedienteDetailPage'
 import ActiveSessionsPage from '../pages/ActiveSessionsPage'
+import AuditoriaPage from '../pages/AuditoriaPage'
 import AdminUsersPage from '../pages/admin/AdminUsersPage'
 import AdminPermissionsPage from '../pages/admin/AdminPermissionsPage'
 import AdminPoliciesPage from '../pages/admin/AdminPoliciesPage'
@@ -46,6 +47,7 @@ function NormalAppRoutes() {
         <Route path="investigaciones/progreso" element={<ProgresoInvestigacionPage />} />
         <Route path="expedientes/:numeroCaso" element={<ExpedienteDetailPage />} />
         <Route path="seguridad/sesiones-activas" element={<ActiveSessionsPage />} />
+        <Route path="seguridad/auditoria" element={<AuditoriaPage />} />
         <Route path="admin/usuarios" element={<AdminUsersPage />} />
         <Route path="admin/permisos" element={<AdminPermissionsPage />} />
         <Route path="admin/politicas" element={<AdminPoliciesPage />} />

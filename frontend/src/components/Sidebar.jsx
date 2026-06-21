@@ -187,7 +187,7 @@ export default function Sidebar({
                 </NavLink>
               </li>
               <li>
-                <NavLink to="/admin/politicas" className={linkClass}>
+                <NavLink to="/seguridad/auditoria" className={linkClass}>
                   <ShieldCheck className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
                   {!collapsed && <span className="truncate">Auditoría</span>}
                 </NavLink>
@@ -233,6 +233,12 @@ export default function Sidebar({
                     <NavLink to="/admin/parametros" className={linkClass}>
                       <Settings className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
                       <span className="truncate">Parámetros</span>
+                    </NavLink>
+                  </li>
+                  <li>
+                    <NavLink to="/admin/politicas" className={linkClass}>
+                      <ShieldCheck className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                      <span className="truncate">Políticas de seguridad</span>
                     </NavLink>
                   </li>
                   <li>

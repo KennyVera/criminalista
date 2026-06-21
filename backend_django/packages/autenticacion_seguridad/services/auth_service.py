@@ -254,13 +254,34 @@ class AuthService:
             raise AuthError(SESSION_CLOSED_BY_ADMIN_MSG, code="SESSION_REVOKED")
         return self.sessions.get_session_status(str(jti))
 
-    def admin_close_session(self, id_sesion: int, *, admin_id: int, ip: str | None = None) -> dict:
+    def admin_close_session(
+        self,
+        id_sesion: int,
+        *,
+        admin_id: int,
+        admin_nombre: str = "",
+        ip: str | None = None,
+    ) -> dict:
+        target = self.sessions.get_session_by_id(id_sesion)
         if not self.sessions.close_session_by_id(id_sesion, motivo=MOTIVO_ADMIN):
             raise AuthError("Sesión no encontrada o ya cerrada")
+        admin_label = admin_nombre.strip() or f"Administrador #{admin_id}"
+        if target:
+            objetivo = f"{target.get('nombres', '')} {target.get('apellidos', '')}".strip()
+            objetivo = objetivo or str(target.get("email") or f"usuario #{target.get('fk_usuario', '')}")
+            email = str(target.get("email") or "")
+            rol = str(target.get("nombre_rol") or "")
+            detalle = (
+                f"{admin_label} cerró la sesión de {objetivo}"
+                + (f" ({email})" if email else "")
+                + (f" — rol {rol}" if rol else "")
+            )
+        else:
+            detalle = f"{admin_label} cerró la sesión id={id_sesion}"
         self._audit(
             fk_usuario=admin_id,
             accion="SESSION_CLOSED_BY_ADMIN",
-            detalle=f"Admin cerró sesión id={id_sesion}",
+            detalle=detalle,
             ip=ip,
             tabla="app_sesiones_activas",
         )

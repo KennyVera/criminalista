@@ -1,6 +1,7 @@
 # Matriz de Trazabilidad Detallada — CrimeTrack Analytics Corp
 
-> Trazabilidad fila-por-fila de los 86 casos de uso. Relaciona: OE, Objetivo Estratégico, OT,
+> Trazabilidad fila-por-fila de los 102 casos de uso (incluye los **16 nuevos de auditoría**
+> CU-O61…CU-O76 del paquete P03, ver sección **D**). Relaciona: OE, Objetivo Estratégico, OT,
 > Objetivo Táctico, OP, Objetivo Operativo, Caso de Uso, Historia de Usuario, Paquete UML, Actor,
 > Departamento, Requisito Funcional, KPI, Funcionalidad/Módulo, Criterio de Aceptación y Resultado
 > Esperado. Complementa la matriz maestra de `000-sistema-general/traceability.md`. Sin huérfanos.
@@ -126,13 +127,39 @@
 
 ---
 
+## D. Matriz Operativa — NIVEL AUDITORÍA (CU-O61…CU-O76, NUEVOS)
+
+> **Implementado adicional.** Amplían P03 (OP3) sin alterar CU-O11…CU-O15. RF de detalle:
+> RF-O-P03-01…RF-O-P03-14 (ver `003-operativo/P03-auditoria/spec.md`).
+
+| CU | HU | OE | OT | OP | Paquete | Actor | Depto | RF | KPI | Módulo | Resultado esperado |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| CU-O61 | HU-O-61 | OE1–OE4 | OT5 | OP3 | P03 | Sistema,A05 | D06 | RF-O-P03-01/02/03 | KPI-18 | Auditoría CRUD | Evento inmutable con antes/después |
+| CU-O62 | HU-O-62 | OE1–OE4 | OT5 | OP3 | P03 | Sistema,A05 | D06 | RF-O-P03-04/05 | KPI-18 | Auditoría auth/sesiones | Ciclo y duración de sesión |
+| CU-O63 | HU-O-63 | OE1–OE4 | OT5 | OP3 | P03 | Sistema,A01 | D06 | RF-O-P03-05 | KPI-19 | Auditoría RBAC | Cambios y accesos denegados |
+| CU-O64 | HU-O-64 | OE1–OE4 | OT5 | OP3 | P03 | Sistema,A05 | D06 | RF-O-P03-06 | KPI-18 | Acceso sensible | Modo de acceso registrado |
+| CU-O65 | HU-O-65 | OE4 | OT6 | OP3 | P03 | Sistema,A02 | D06 | RF-O-P03-01/02 | KPI-20 | Auditoría expedientes | Historial reconstruible |
+| CU-O66 | HU-O-66 | OE4 | OT6 | OP3 | P03 | Sistema,A04 | D06 | RF-O-P03-13 | KPI-22 | Auditoría evidencias/custodia | Cadena con hash verificable |
+| CU-O67 | HU-O-67 | OE4 | OT6 | OP3 | P03 | Sistema,A02 | D06 | RF-O-P03-01/06 | KPI-23 | Auditoría involucrados | Cambios con antes/después |
+| CU-O68 | HU-O-68 | OE4 | OT6 | OP3 | P03 | Sistema,A06 | D06 | RF-O-P03-01 | KPI-24 | Auditoría exportaciones | Exportación auditada |
+| CU-O69 | HU-O-69 | OE1–OE4 | OT5 | OP3 | P03 | Sistema,A01 | D06 | RF-O-P03-01 | KPI-17 | Auditoría configuración | Cambios críticos trazados |
+| CU-O70 | HU-O-70 | OE2 | OT2 | OP3 | P03 | Sistema,A10 | D06 | RF-O-P03-14 | KPI-05 | Auditoría APIs | Consumo sin secretos |
+| CU-O71 | HU-O-71 | OE3 | OT3 | OP3 | P03 | Sistema,A10 | D06 | RF-O-P03-01 | KPI-09 | Auditoría cloud/continuidad | Backups/incidentes trazados |
+| CU-O72 | HU-O-72 | OE4 | OT4 | OP3 | P03 | Sistema,A11 | D06 | RF-O-P03-01/06 | KPI-13 | Auditoría BI/IA | Modelos y datasets trazados |
+| CU-O73 | HU-O-73 | OE1–OE4 | OT5 | OP3 | P03 | A05 | D06 | RF-O-P03-09 | KPI-18 | Tablero central auditoría | Traza filtrable y legible |
+| CU-O74 | HU-O-74 | OE1–OE4 | OT5 | OP3 | P03 | A05 | D06 | RF-O-P03-10 | KPI-19 | Reportes de cumplimiento | Reporte auditado y legible |
+| CU-O75 | HU-O-75 | OE1–OE4 | OT5 | OP3 | P03 | Sistema,A05 | D06 | RF-O-P03-07/08/11 | KPI-19 | Verificación integridad | Manipulación detectable |
+| CU-O76 | HU-O-76 | OE1–OE4 | OT5 | OP3 | P03 | A05,A01 | D06 | RF-O-P03-12 | KPI-18 | Retención/archivado | Histórico íntegro y autorizado |
+
+---
+
 ## Verificación de Cobertura (sin huérfanos)
 
 | Comprobación | Resultado |
 |---|---|
-| Todo CU tiene HU asociada | ✔ 86/86 |
-| Todo CU traza a un OE | ✔ 86/86 |
-| Todo CU pertenece a un paquete (P01–P12) | ✔ |
+| Todo CU tiene HU asociada | ✔ 102/102 (incl. CU-O61…O76) |
+| Todo CU traza a un OE | ✔ 102/102 |
+| Todo CU pertenece a un paquete (P01–P12) | ✔ (CU-O61…O76 en P03) |
 | Todo OE se materializa en CU/HU | ✔ OE1–OE4 cubiertos |
 | Todo CU tiene criterio de aceptación | ✔ (ver `casos-uso.md`) |
 | Criterio detallado Dado/Cuando/Entonces | ✔ en `casos-uso.md` |
@@ -141,4 +168,6 @@
 
 - **PC-M1:** Confirmar metas numéricas por KPI (enlaza con PC-T1).
 - **PC-M2:** Validar actor A15 (Legal & Contratos) — estado "Implementado adicional".
+- **PC-M3:** Confirmar decisiones de auditoría PC-A1…PC-A6 (almacenamiento, tenant, retención, hash,
+  parser UA, RBAC fino) descritas en `003-operativo/P03-auditoria/spec.md`.
 

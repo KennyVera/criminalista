@@ -212,7 +212,7 @@
 
   /* ── Tables ── */
   .data-table {
-    @apply min-w-full text-left text-sm;
+    @apply w-full min-w-full text-left text-sm;
   }
 
   .data-table thead {

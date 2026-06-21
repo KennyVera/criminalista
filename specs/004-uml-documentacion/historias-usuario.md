@@ -1,6 +1,7 @@
 # Historias de Usuario — CrimeTrack Analytics Corp
 
-> 86 historias (10 estratégicas, 16 tácticas, 60 operativas). Formato:
+> 102 historias (10 estratégicas, 16 tácticas, 76 operativas; incluye **16 nuevas de auditoría**
+> HU-O-61…HU-O-76). Formato:
 > **HU-[Nivel]-[Número]** — "Como [actor], quiero [necesidad], para [beneficio]".
 > Cada historia incluye: Código, Rol, Necesidad, Beneficio, Caso de uso, Paquete UML, Objetivo,
 > Criterios de aceptación y Prioridad. Subordinado a `000-sistema-general/` y a la constitución.
@@ -165,6 +166,51 @@ Convención de prioridad: **Alta** (crítica/seguridad/núcleo/demo), **Media** 
 
 ---
 
+## Historias Operativas — NIVEL AUDITORÍA (NUEVAS, HU-O-61…HU-O-76)
+
+> **Implementado adicional.** Una historia por cada caso de uso nuevo de auditoría (HU-O-61 ↔
+> CU-O61, …, HU-O-76 ↔ CU-O76), todas del paquete **P03**. Detalle del criterio Dado/Cuando/Entonces
+> en `casos-uso.md`, sección "CASOS DE USO NUEVOS — NIVEL AUDITORÍA (P03)".
+
+| Código | Rol | Quiero (necesidad) | Para (beneficio) | CU | Paquete | Objetivo | Prioridad |
+|---|---|---|---|---|---|---|---|
+| HU-O-61 | Sistema/Auditor | registrar toda operación CRUD con valores antes/después | reconstruir cualquier cambio | CU-O61 | P03 | OT5 | Alta |
+| HU-O-62 | Sistema/Auditor | auditar autenticación y sesiones (inicio, fin, duración, dispositivo) | saber quién accedió, cómo y por cuánto tiempo | CU-O62 | P03 | OT5 | Alta |
+| HU-O-63 | Sistema/Auditor | auditar roles, permisos y privilegios | controlar la autorización y la elevación de privilegios | CU-O63 | P03 | OT5 | Alta |
+| HU-O-64 | Sistema/Auditor | auditar el acceso a información sensible por modo | saber quién vio/descargó/exportó datos reservados | CU-O64 | P03 | OT5 | Alta |
+| HU-O-65 | Sistema/Auditor | auditar el ciclo de vida de los expedientes | reconstruir la historia completa del caso | CU-O65 | P03 | OE4 | Alta |
+| HU-O-66 | Sistema/Custodio | auditar evidencias y cadena de custodia con hash | preservar la validez legal de la evidencia | CU-O66 | P03 | OE4 | Alta |
+| HU-O-67 | Sistema/Auditor | auditar a los involucrados y sus datos protegidos | proteger la información personal y su trazabilidad | CU-O67 | P03 | OE4 | Media |
+| HU-O-68 | Sistema/Auditor | auditar reportes, archivos y exportaciones | controlar la salida de información | CU-O68 | P03 | OE4 | Alta |
+| HU-O-69 | Sistema/Auditor | auditar la administración y configuración | rastrear cambios críticos del sistema | CU-O69 | P03 | OT5 | Alta |
+| HU-O-70 | Sistema/Auditor | auditar APIs e integraciones sin exponer secretos | controlar el consumo y los accesos externos | CU-O70 | P03 | OE2 | Media |
+| HU-O-71 | Sistema/SRE | auditar la infraestructura cloud y la continuidad | trazar backups, incidentes y recuperaciones | CU-O71 | P03 | OE3 | Media |
+| HU-O-72 | Sistema/Analista BI | auditar analítica, BI e IA | trazar consultas, modelos y datasets | CU-O72 | P03 | OE4 | Media |
+| HU-O-73 | Auditor/Compliance | consultar el tablero central de auditoría | buscar y reconstruir cualquier actividad | CU-O73 | P03 | OT5 | Alta |
+| HU-O-74 | Auditor/Compliance | generar reportes de auditoría y cumplimiento | demostrar conformidad legal | CU-O74 | P03 | OT5 | Alta |
+| HU-O-75 | Sistema/Auditor | verificar la integridad de la auditoría | detectar cualquier manipulación de logs | CU-O75 | P03 | OT5 | Alta |
+| HU-O-76 | Auditor/Compliance | gestionar retención y archivado de auditoría | conservar históricos sin perder integridad | CU-O76 | P03 | OT5 | Media |
+
+**Criterios de aceptación (HU-O NIVEL AUDITORÍA) — forma resumida (detalle en `casos-uso.md`):**
+- HU-O-61 — Dado un INSERT/UPDATE/DELETE, Cuando ocurre, Entonces se registra evento inmutable con usuario, rol, registro y valores anterior/nuevo.
+- HU-O-62 — Dado un inicio y cierre de sesión, Cuando ocurren, Entonces se registran inicio, última actividad, cierre, duración, IP, dispositivo y navegador.
+- HU-O-63 — Dada una asignación de rol o acceso denegado, Cuando ocurre, Entonces queda registrado el responsable, el permiso y el resultado.
+- HU-O-64 — Dado un acceso a información sensible, Cuando se realiza, Entonces se registra quién, qué registro y el modo (consulta/descarga/exportación…).
+- HU-O-65 — Dado un cambio de estado/reasignación de expediente, Cuando ocurre, Entonces el historial registra antes/después, usuario y motivo.
+- HU-O-66 — Dada una transferencia de custodia, Cuando se registra, Entonces conserva custodio anterior/nuevo, fecha, motivo y hash verificable; una ruptura genera alerta.
+- HU-O-67 — Dada una actualización de un involucrado, Cuando ocurre, Entonces se registra responsable, motivo y valores anterior/nuevo enmascarados.
+- HU-O-68 — Dada una exportación, Cuando se realiza, Entonces se registra solicitante, formato, parámetros, destinatarios y motivo si es sensible.
+- HU-O-69 — Dado un cambio de parámetro/configuración, Cuando se guarda, Entonces se registra el responsable y los valores anterior/nuevo.
+- HU-O-70 — Dada una llamada API, Cuando se procesa, Entonces se registra endpoint, método, código y latencia sin almacenar token/API key completos.
+- HU-O-71 — Dada una ejecución de backup o incidente SLA, Cuando ocurre, Entonces se registra resultado, tiempos y responsable.
+- HU-O-72 — Dada una ejecución de modelo predictivo, Cuando se realiza, Entonces se registra modelo, versión, parámetros, dataset y resultado.
+- HU-O-73 — Dado un auditor, Cuando filtra por usuario/rol/sesión/módulo/CU/entidad/fecha/IP, Entonces obtiene la traza completa, paginada y legible.
+- HU-O-74 — Dado un periodo, Cuando genera un reporte de cumplimiento, Entonces obtiene un documento legible y la exportación queda registrada.
+- HU-O-75 — Dada una manipulación de un log, Cuando se ejecuta la verificación, Entonces se detecta la ruptura de la cadena y se notifica.
+- HU-O-76 — Dada una política de retención, Cuando vence un rango, Entonces los logs se archivan sin perder integridad y el archivado queda autorizado y registrado.
+
+---
+
 ## Resumen de Historias
 
 | Nivel | Rango | Cantidad |
@@ -172,7 +218,8 @@ Convención de prioridad: **Alta** (crítica/seguridad/núcleo/demo), **Media** 
 | Estratégicas | HU-E-01…HU-E-10 | 10 |
 | Tácticas | HU-T-01…HU-T-16 | 16 |
 | Operativas | HU-O-01…HU-O-60 | 60 |
-| **Total** | | **86** |
+| Operativas — NIVEL AUDITORÍA (nuevas) | HU-O-61…HU-O-76 | 16 |
+| **Total** | | **102** |
 
 Ninguna historia queda sin caso de uso ni sin objetivo (RD-02/RD-03). No se detectaron historias
 duplicadas; cualquier nueva se marcaría como "Implementado adicional".

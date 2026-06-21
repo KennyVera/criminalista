@@ -1,9 +1,12 @@
 # Especificación — Nivel Operativo
 
 > Nivel empresarial **Operativo**. Casos de uso CU-O01…CU-O60, organizados por paquete UML
-> (P01–P12). Subordinada a la constitución y a `000-sistema-general/`. **Sin implementación de código.**
-> El detalle completo de cada caso de uso (actor, objetivo, precondición, flujo principal, flujo
-> alternativo y criterio de aceptación) está en `004-uml-documentacion/casos-uso.md`.
+> (P01–P12), **más los 16 casos de uso nuevos de auditoría CU-O61…CU-O76** (NIVEL AUDITORÍA, P03,
+> "Implementado adicional"). Subordinada a la constitución y a `000-sistema-general/`. **Sin
+> implementación de código.** El detalle completo de cada caso de uso (actor, objetivo, precondición,
+> flujo principal, flujo alternativo y criterio de aceptación) está en
+> `004-uml-documentacion/casos-uso.md`. La **ampliación de P03** (diagnóstico, arquitectura, modelo
+> de datos, plan, tareas, riesgos y pendientes) está en `003-operativo/P03-auditoria/`.
 
 ## 1. Objetivo
 
@@ -38,7 +41,7 @@ Operativo.
 |---|---|---|
 | P01 Autenticación y Seguridad | OP1 | CU-O01, CU-O02, CU-O03, CU-O04, CU-O05 |
 | P02 Administración del Sistema | OP2 | CU-O06, CU-O07, CU-O08, CU-O09, CU-O10 |
-| P03 Auditoría y Trazabilidad | OP3 | CU-O11, CU-O12, CU-O13, CU-O14, CU-O15 |
+| P03 Auditoría y Trazabilidad | OP3 | CU-O11, CU-O12, CU-O13, CU-O14, CU-O15; **CU-O61…CU-O76 (NIVEL AUDITORÍA, nuevos)** |
 | P04 Dashboard y Analítica Criminal | OP4 | CU-O16, CU-O17, CU-O18, CU-O19, CU-O20 |
 | P05 Gestión de Expedientes | OP5 | CU-O21, CU-O22, CU-O23, CU-O24, CU-O25 |
 | P06 Gestión de Evidencias Digitales | OP6 | CU-O26, CU-O27, CU-O28, CU-O29, CU-O30 |
@@ -73,6 +76,7 @@ Operativo.
 | RF-O-P01 | Autenticación, MFA, recuperación, sesiones y validación de permisos. | P01 |
 | RF-O-P02 | Alta de instituciones, usuarios/roles, parámetros, licencias y contratos/SLA. | P02 |
 | RF-O-P03 | Bitácora de acceso, consulta de trazabilidad, exportación de logs, alertas y cadena de custodia. | P03 |
+| RF-O-P03-01…14 | **Auditoría total y centralizada (NIVEL AUDITORÍA):** registro append-only de toda operación (CRUD, auth/sesiones, RBAC, acceso sensible, expedientes, evidencias/custodia, involucrados, exportaciones, configuración, APIs, cloud, BI), valores antes/después, hash encadenado, accesos denegados, alertas, verificación de integridad, retención/archivado, tablero y reportes de cumplimiento. Detalle en `P03-auditoria/spec.md`. | P03 |
 | RF-O-P04 | Mapa de calor, indicadores, filtros analíticos, tendencias y predicción criminal. | P04 |
 | RF-O-P05 | Crear, asignar, actualizar, vincular y cerrar expedientes. | P05 |
 | RF-O-P06 | Registrar, cargar, hashear, custodiar y consultar evidencias. | P06 |
@@ -92,6 +96,8 @@ Operativo.
 | RNF-O-03 | Integridad criptográfica de evidencias (hash) y cadena de custodia (RS-07). |
 | RNF-O-04 | Aislamiento por tenant (RN-06). |
 | RNF-O-05 | Gráficos (mapa de calor, tendencias) legibles y proporcionados (RI-04). |
+| RNF-O-06 | **Auditoría inmutable (append-only) con hash encadenado**; ningún rol altera el historial; tiempo en servidor/UTC; enmascaramiento de datos sensibles; sin secretos en logs (P03 ampliado). |
+| RNF-O-07 | **Auditoría no bloqueante** (escritura asíncrona con buffer/reintento) y resiliente ante fallos del servicio de auditoría. |
 
 ## 10. Reglas de Negocio
 
@@ -157,10 +163,14 @@ de OE1–OE4 o del alcance B2G.
 
 ## 20. Historias de Usuario Relacionadas
 
-HU-O-01…HU-O-60 (una por caso de uso) en `004-uml-documentacion/historias-usuario.md`.
+HU-O-01…HU-O-60 (una por caso de uso) y **HU-O-61…HU-O-76 (NIVEL AUDITORÍA, nuevas)** en
+`004-uml-documentacion/historias-usuario.md`.
 
 ## Pendientes por Confirmar
 
 - **PC-O1:** Algoritmo de hash de evidencia y formato de almacenamiento (ligado a PC-R2).
 - **PC-O2:** Modelo y fuente de datos para la predicción criminal (CU-O20) y el forecast B2G (CU-O60).
 - **PC-O3:** Política de retención de logs y backups (CU-O13, CU-O52).
+- **PC-O4 (auditoría):** Decisiones PC-A1…PC-A6 de la ampliación P03 (almacenamiento append-only,
+  multi-tenant, retención, algoritmo de hash, parser de User-Agent, alcance del RBAC fino). Ver
+  `003-operativo/P03-auditoria/spec.md`.
