@@ -20,6 +20,8 @@ export const expedientesApi = {
   uploadEvidencia: (caseNumber, formData) =>
     api.uploadForm(`${B}/${enc(caseNumber)}/evidencias/`, formData),
   bitacora: (caseNumber) => api.request(`${B}/${enc(caseNumber)}/bitacora/`),
+  cierreRequisitos: (caseNumber) =>
+    api.request(`${B}/${enc(caseNumber)}/cierre/requisitos/`),
   addBitacora: (caseNumber, body) =>
     api.request(`${B}/${enc(caseNumber)}/bitacora/`, {
       method: 'POST',

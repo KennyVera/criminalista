@@ -199,6 +199,9 @@ def ensure_operational_users(
             "Ramírez",
             DEFAULT_DETECTIVE_PASSWORD,
         ),
+        ("oficial1@crimetrack.local", 4, "OF-4001", "Jorge", "Mendoza", "Oficial2026!"),
+        ("oficial2@crimetrack.local", 4, "OF-4002", "Lucía", "Torres", "Oficial2026!"),
+        ("oficial3@crimetrack.local", 4, "OF-4003", "Andrés", "Vega", "Oficial2026!"),
     ]
 
     created: list[str] = []

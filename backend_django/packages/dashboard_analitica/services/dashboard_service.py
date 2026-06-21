@@ -145,6 +145,31 @@ class DashboardService:
             "tasa_resolucion": live["tasa_resolucion"],
         }
 
+    def crime_forecast(
+        self,
+        *,
+        horizon: int = 6,
+        distrito: str | None = None,
+        tipo: str | None = None,
+    ) -> dict[str, Any]:
+        """CU-O20: pronóstico de incidencia criminal (cacheado por combinación de filtros)."""
+        from django.core.cache import cache
+
+        from packages.dashboard_analitica.services.analytics_engine import (
+            DashboardAnalyticsEngine,
+        )
+
+        horizon = max(1, min(int(horizon), 12))
+        cache_key = f"crimetrack:dashboard:forecast:v1:{horizon}:{distrito or ''}:{tipo or ''}"
+        cached = cache.get(cache_key)
+        if cached:
+            return {**dict(cached), "_from_cache": True}
+
+        filters = {k: v for k, v in {"distrito": distrito, "tipo": tipo}.items() if v}
+        data = DashboardAnalyticsEngine().crime_forecast(horizon=horizon, **filters)
+        cache.set(cache_key, data, 60 * 15)
+        return data
+
     def operational_indicators(self) -> dict[str, Any]:
         self._ensure_or_materialize()
         data = self.store.get_payload("operational")

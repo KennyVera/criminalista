@@ -58,6 +58,64 @@ class LoginView(APIView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class MfaVerifyView(APIView):
+    """POST — completa el inicio de sesión validando el código 2FA enviado por correo."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        email = request.data.get("email", "").strip()
+        code = request.data.get("code", "").strip()
+        if not email or not code:
+            return Response(
+                {"error": "email y code son obligatorios"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            result = AuthService().verify_login_mfa(
+                email,
+                code,
+                ip=_client_ip(request),
+                user_agent=_user_agent(request),
+            )
+            return Response(result, status=status.HTTP_200_OK)
+        except AuthError as exc:
+            return Response(
+                {"error": str(exc), "code": getattr(exc, "code", "AUTH_ERROR")},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class MfaResendView(APIView):
+    """POST — reenvía el código 2FA si hay una verificación en curso."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        email = request.data.get("email", "").strip()
+        if not email:
+            return Response(
+                {"error": "email es obligatorio"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            result = AuthService().resend_login_mfa(email, ip=_client_ip(request))
+            return Response(result, status=status.HTTP_200_OK)
+        except AuthError as exc:
+            return Response(
+                {"error": str(exc), "code": getattr(exc, "code", "AUTH_ERROR")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as exc:
+            return Response(
+                {"error": f"No se pudo enviar el correo: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class LogoutView(APIView):
     permission_classes = [IsAuthenticatedJWT]
 

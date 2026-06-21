@@ -156,6 +156,29 @@ class DashboardDirectAccessPreviewView(APIView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class DashboardCrimeForecastView(APIView):
+    """CU-O20 — predicción/pronóstico de incidencia criminal (solo Analista Criminal / Admin)."""
+
+    permission_classes = [IsAnalistaCriminalJWT]
+
+    def get(self, request):
+        try:
+            horizon_raw = request.query_params.get("horizonte", "6")
+            try:
+                horizon = int(horizon_raw)
+            except ValueError:
+                horizon = 6
+            data = DashboardService().crime_forecast(
+                horizon=horizon,
+                distrito=request.query_params.get("zona") or None,
+                tipo=request.query_params.get("tipo") or None,
+            )
+            return Response(data)
+        except Exception as exc:
+            return _minio_error(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class DashboardOperationalIndicatorsView(APIView):
     """Generar indicadores operativos — solo Analista Criminal / Admin."""
 

@@ -114,11 +114,25 @@ export function AuthProvider({ children }) {
   const login = useCallback(
     async (email, password) => {
       const data = await api.authLogin(email, password)
+      if (data.mfa_required) {
+        return { mfaRequired: true, email: data.email, message: data.message }
+      }
+      persist(data.access_token, data.user)
+      return { mfaRequired: false, user: data.user }
+    },
+    [persist]
+  )
+
+  const verifyMfa = useCallback(
+    async (email, code) => {
+      const data = await api.authVerifyMfa(email, code)
       persist(data.access_token, data.user)
       return data.user
     },
     [persist]
   )
+
+  const resendMfa = useCallback((email) => api.authResendMfa(email), [])
 
   const logout = useCallback(async () => {
     try {
@@ -136,9 +150,11 @@ export function AuthProvider({ children }) {
       loading,
       isAuthenticated: !!token && !!user,
       login,
+      verifyMfa,
+      resendMfa,
       logout,
     }),
-    [token, user, loading, login, logout]
+    [token, user, loading, login, verifyMfa, resendMfa, logout]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

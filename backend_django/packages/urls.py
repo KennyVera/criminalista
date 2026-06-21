@@ -27,4 +27,12 @@ urlpatterns = [
         "expedientes-criminales/",
         include("packages.expedientes_criminales.urls"),
     ),
+    path(
+        "evidencias/",
+        include("packages.evidencias_digitales.urls"),
+    ),
+    path(
+        "reporteria/",
+        include("packages.reporteria_exportacion.urls"),
+    ),
 ]

@@ -104,11 +104,16 @@ class ExpedienteEvidenciasView(APIView):
                 filename=archivo.name,
                 tipo_evidencia=tipo_ev,
             )
+            hash_corto = str(row.get("hash_sha256") or "")[:16]
             audit_request(
                 request,
                 accion="EVIDENCE_UPLOADED",
                 tabla="app_evidencias",
-                detalle=f"{_actor(request)} cargó evidencia '{archivo.name}' ({tipo_ev}) en el caso {case_number}",
+                detalle=(
+                    f"{_actor(request)} cargó evidencia '{archivo.name}' ({tipo_ev}) "
+                    f"en el caso {case_number} — SHA-256 {hash_corto}…"
+                ),
+                despues=row,
             )
             return Response(row, status=status.HTTP_201_CREATED)
         except ValueError as exc:
@@ -149,6 +154,19 @@ class ExpedienteBitacoraView(APIView):
             return Response(row, status=status.HTTP_201_CREATED)
         except ValueError as exc:
             return _err(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteCierreRequisitosView(APIView):
+    """GET — verifica los criterios de cierre (RN-09) del expediente (CU-O25)."""
+
+    permission_classes = [CanAccessExpedienteJWT]
+
+    def get(self, request, case_number: str):
+        try:
+            return Response(_svc().check_close_requirements(case_number))
+        except Exception as exc:
+            return _err(exc, 500)
 
 
 @method_decorator(csrf_exempt, name="dispatch")

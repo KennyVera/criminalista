@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import io
 import os
-import uuid
 from typing import Any
 
 import pandas as pd
@@ -13,6 +11,8 @@ from packages.shared.minio_transactional import TransactionalMinioStore, utc_now
 
 TIPOS_INVOLUCRADO = ("Víctima", "Testigo", "Sospechoso")
 ESTADOS_CASO = ("Abierto", "En investigación", "Resuelto", "Cerrado", "Archivado")
+# RN-09: estados que implican cierre del expediente y exigen criterios de completitud.
+ESTADOS_CIERRE = ("Cerrado", "Archivado")
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -204,14 +204,10 @@ class ExpedienteService:
         return {**created_inv, **created_rel}
 
     def list_evidencias(self, case_number: str) -> list[dict[str, Any]]:
-        fk_caso = self.datalake.resolve_fk_caso(case_number)
-        if not fk_caso:
-            return []
-        df = self.tx.read_table("app_evidencias")
-        if df.empty:
-            return []
-        mask = df["fk_caso"].astype(int) == fk_caso
-        return [_json_safe(r) for r in df[mask].to_dict(orient="records")]
+        # Delegado al paquete P06 (evidencias_digitales) — fuente única de verdad.
+        from packages.evidencias_digitales.services.evidencias_service import EvidenciasService
+
+        return EvidenciasService().list_by_case(case_number)
 
     def upload_evidencia(
         self,
@@ -222,33 +218,16 @@ class ExpedienteService:
         filename: str,
         tipo_evidencia: str = "Multimedia",
     ) -> dict[str, Any]:
-        fk_caso = self.datalake.resolve_fk_caso(case_number)
-        if not fk_caso:
-            raise ValueError("Caso no encontrado")
+        # Delegado al paquete P06: calcula hash SHA-256 e inicia la cadena de custodia.
+        from packages.evidencias_digitales.services.evidencias_service import EvidenciasService
 
-        safe_name = "".join(c for c in filename if c.isalnum() or c in "._-") or "archivo"
-        key = f"{self._evidence_prefix}/{case_number}/{uuid.uuid4().hex}_{safe_name}"
-        body = file_obj.read()
-        size_mb = round(len(body) / (1024 * 1024), 3)
-
-        self.olap._client.put_object(
-            Bucket=self._evidence_bucket,
-            Key=key,
-            Body=body,
-            ContentType=getattr(file_obj, "content_type", None) or "application/octet-stream",
+        return EvidenciasService().upload(
+            case_number,
+            user=user,
+            file_obj=file_obj,
+            filename=filename,
+            tipo_evidencia=tipo_evidencia,
         )
-
-        minio_url = f"s3://{self._evidence_bucket}/{key}"
-        row = {
-            "fk_caso": fk_caso,
-            "fk_usuario_carga": int(user["id_usuario"]),
-            "tipo_evidencia": tipo_evidencia,
-            "minio_url": minio_url,
-            "peso_mb": size_mb,
-            "estado_custodia": "En custodia",
-            "fecha_subida": utc_now_iso(),
-        }
-        return self.tx.append_row("app_evidencias", row)
 
     def list_bitacora(self, case_number: str) -> list[dict[str, Any]]:
         df = self.tx.read_table("app_expediente_bitacora")
@@ -262,6 +241,45 @@ class ExpedienteService:
     def _latest_bitacora(self, case_number: str) -> dict | None:
         items = self.list_bitacora(case_number)
         return items[0] if items else None
+
+    def check_close_requirements(self, case_number: str, *, avance_pct: int | None = None) -> dict[str, Any]:
+        """RN-09: valida los criterios de completitud y custodia para cerrar un expediente.
+
+        Devuelve {"ok": bool, "faltantes": [str], "checks": {...}}.
+        """
+        cn = self._normalize_case(case_number)
+        involucrados = self.list_involucrados(cn)
+        evidencias = self.list_evidencias(cn)
+
+        tiene_involucrados = len(involucrados) > 0
+        tiene_evidencias = len(evidencias) > 0
+        # Custodia: ninguna evidencia debe haber quedado fuera de custodia (p.ej. "Destruida").
+        custodia_ok = all(
+            str(ev.get("estado_custodia") or "").strip().lower() != "destruida"
+            for ev in evidencias
+        )
+        avance_ok = True if avance_pct is None else int(avance_pct) >= 100
+
+        faltantes: list[str] = []
+        if not tiene_involucrados:
+            faltantes.append("Debe registrar al menos un involucrado (víctima, sospechoso o testigo).")
+        if not tiene_evidencias:
+            faltantes.append("Debe cargar al menos una evidencia digital.")
+        if not custodia_ok:
+            faltantes.append("Hay evidencias con custodia rota (estado «Destruida»); revise la cadena de custodia.")
+        if not avance_ok:
+            faltantes.append("El avance del caso debe ser 100% para cerrarlo.")
+
+        return {
+            "ok": not faltantes,
+            "faltantes": faltantes,
+            "checks": {
+                "involucrados": tiene_involucrados,
+                "evidencias": tiene_evidencias,
+                "custodia": custodia_ok,
+                "avance": avance_ok,
+            },
+        }
 
     def add_bitacora_entry(
         self,
@@ -281,6 +299,14 @@ class ExpedienteService:
         estado = str(estado_caso).strip()
         if estado not in ESTADOS_CASO:
             raise ValueError(f"estado_caso inválido. Use: {ESTADOS_CASO}")
+
+        # RN-09 (CU-O25): solo se puede cerrar si cumple completitud y custodia.
+        if estado in ESTADOS_CIERRE:
+            req = self.check_close_requirements(cn, avance_pct=avance_pct)
+            if not req["ok"]:
+                raise ValueError(
+                    "No se puede cerrar el expediente (RN-09). " + " ".join(req["faltantes"])
+                )
 
         autor = f"{user.get('nombres', '')} {user.get('apellidos', '')}".strip()
         row = {

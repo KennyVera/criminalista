@@ -54,6 +54,18 @@ def get_session_hours() -> int:
     return _policy_int("session_hours", DEFAULT_SESSION_HOURS, min_v=1, max_v=168)
 
 
+def is_admin_2fa_required() -> bool:
+    """True si la política admin_2fa_required está activa y su valor es verdadero.
+
+    `_get_policy_row` ya devuelve None cuando la política está marcada como inactiva,
+    por lo que basta con comprobar el valor.
+    """
+    row = _get_policy_row("admin_2fa_required")
+    if not row:
+        return False
+    return _is_active(row.get("valor"))
+
+
 def validate_password_strength(password: str) -> None:
     min_len = get_pwd_min_length()
     if len(password) < min_len:

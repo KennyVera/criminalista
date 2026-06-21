@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import random
+import string
 from typing import Any
 
 import pandas as pd
+from django.core.cache import cache
 
 from packages.autenticacion_seguridad.services.jwt_tokens import (
     create_access_token,
@@ -10,7 +13,10 @@ from packages.autenticacion_seguridad.services.jwt_tokens import (
     expiration_iso,
 )
 from packages.autenticacion_seguridad.services.passwords import verify_password
-from packages.autenticacion_seguridad.services.security_policy import get_login_max_attempts
+from packages.autenticacion_seguridad.services.security_policy import (
+    get_login_max_attempts,
+    is_admin_2fa_required,
+)
 from packages.autenticacion_seguridad.services.session_service import (
     MOTIVO_ADMIN,
     MOTIVO_LOGOUT,
@@ -28,6 +34,11 @@ class AuthError(Exception):
 
 _ACTIVE_STATES = frozenset({"activa", "active"})
 _LOCKED_STATES = frozenset({"bloqueada", "blocked", "bloqueado"})
+
+# 2FA (segundo factor por correo) para administradores.
+MFA_TTL_SECONDS = 300  # 5 minutos
+MFA_CODE_LENGTH = 6
+MFA_MAX_ATTEMPTS = 5
 
 
 class AuthService:
@@ -193,6 +204,23 @@ class AuthService:
         roles = self._roles_map()
         fk_rol = int(user["fk_rol"])
         nombre_rol = roles.get(fk_rol, "Sin rol")
+
+        # Segundo factor (2FA por correo) — solo administradores y si la política está activa.
+        if nombre_rol.strip().lower() == "admin" and is_admin_2fa_required():
+            return self._start_login_mfa(user, nombre_rol, ip=ip)
+
+        return self._issue_session(user, nombre_rol, fk_rol, ip=ip, user_agent=user_agent)
+
+    def _issue_session(
+        self,
+        user: dict[str, Any],
+        nombre_rol: str,
+        fk_rol: int,
+        *,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict[str, Any]:
+        """Crea el token JWT, abre la sesión y registra el inicio de sesión."""
         jti = self.sessions.new_jti()
         exp_iso = expiration_iso()
 
@@ -229,6 +257,144 @@ class AuthService:
             "token_type": "Bearer",
             "user": self._public_user(user, nombre_rol),
         }
+
+    # ── Segundo factor (2FA por correo) ──
+    def _mfa_cache_key(self, email: str) -> str:
+        return f"crimetrack:login_mfa:{email.strip().lower()}"
+
+    def _start_login_mfa(
+        self, user: dict[str, Any], nombre_rol: str, *, ip: str | None = None
+    ) -> dict[str, Any]:
+        from packages.autenticacion_seguridad.services.email_service import (
+            send_login_mfa_code,
+        )
+
+        code = "".join(random.choices(string.digits, k=MFA_CODE_LENGTH))
+        cache.set(
+            self._mfa_cache_key(user["email"]),
+            {
+                "code": code,
+                "id_usuario": int(user["id_usuario"]),
+                "attempts": 0,
+            },
+            MFA_TTL_SECONDS,
+        )
+
+        nombre = f"{user.get('nombres', '')} {user.get('apellidos', '')}".strip() or "Administrador"
+        send_login_mfa_code(
+            to_email=user["email"],
+            code=code,
+            nombre=nombre,
+            minutes=MFA_TTL_SECONDS // 60,
+        )
+
+        self._audit(
+            fk_usuario=int(user["id_usuario"]),
+            accion="MFA_CODE_SENT",
+            detalle=f"Código 2FA enviado a {user['email']} (rol {nombre_rol})",
+            ip=ip,
+            tabla="app_usuarios",
+        )
+
+        return {
+            "mfa_required": True,
+            "email": user["email"],
+            "message": "Te enviamos un código de verificación a tu correo electrónico.",
+            "expires_in": MFA_TTL_SECONDS,
+        }
+
+    def verify_login_mfa(
+        self,
+        email: str,
+        code: str,
+        *,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict[str, Any]:
+        key = self._mfa_cache_key(email)
+        payload = cache.get(key)
+        if not payload:
+            raise AuthError(
+                "El código expiró o no es válido. Inicia sesión de nuevo.",
+                code="MFA_EXPIRED",
+            )
+
+        attempts = int(payload.get("attempts", 0)) + 1
+        if attempts > MFA_MAX_ATTEMPTS:
+            cache.delete(key)
+            self._audit(
+                fk_usuario=int(payload.get("id_usuario") or 0) or None,
+                accion="MFA_FAILED",
+                detalle="Demasiados intentos de código 2FA; verificación cancelada",
+                ip=ip,
+                tabla="app_usuarios",
+            )
+            raise AuthError(
+                "Demasiados intentos. Inicia sesión de nuevo para recibir un código nuevo.",
+                code="MFA_EXPIRED",
+            )
+
+        if str(payload.get("code")) != str(code).strip():
+            payload["attempts"] = attempts
+            cache.set(key, payload, MFA_TTL_SECONDS)
+            self._audit(
+                fk_usuario=int(payload.get("id_usuario") or 0) or None,
+                accion="MFA_FAILED",
+                detalle=f"Código 2FA incorrecto ({attempts}/{MFA_MAX_ATTEMPTS})",
+                ip=ip,
+                tabla="app_usuarios",
+            )
+            remaining = MFA_MAX_ATTEMPTS - attempts
+            raise AuthError(
+                f"Código incorrecto. Te quedan {max(remaining, 0)} intento(s).",
+                code="MFA_INVALID",
+            )
+
+        user_id = int(payload["id_usuario"])
+        df = self._read_users()
+        row = df[df["id_usuario"] == user_id]
+        if row.empty:
+            cache.delete(key)
+            raise AuthError("Usuario no encontrado")
+        user = row.iloc[0].to_dict()
+        if not self._is_active(user):
+            cache.delete(key)
+            raise AuthError("Cuenta inactiva. Contacte al administrador.")
+
+        cache.delete(key)
+
+        roles = self._roles_map()
+        fk_rol = int(user["fk_rol"])
+        nombre_rol = roles.get(fk_rol, "Sin rol")
+
+        self._audit(
+            fk_usuario=user_id,
+            accion="MFA_VERIFIED",
+            detalle=f"Segundo factor verificado: {user['email']}",
+            ip=ip,
+            tabla="app_usuarios",
+        )
+
+        return self._issue_session(user, nombre_rol, fk_rol, ip=ip, user_agent=user_agent)
+
+    def resend_login_mfa(self, email: str, *, ip: str | None = None) -> dict[str, Any]:
+        key = self._mfa_cache_key(email)
+        payload = cache.get(key)
+        if not payload:
+            raise AuthError(
+                "No hay una verificación en curso. Inicia sesión de nuevo.",
+                code="MFA_EXPIRED",
+            )
+        user_id = int(payload["id_usuario"])
+        df = self._read_users()
+        row = df[df["id_usuario"] == user_id]
+        if row.empty:
+            cache.delete(key)
+            raise AuthError("Usuario no encontrado")
+        user = row.iloc[0].to_dict()
+        roles = self._roles_map()
+        nombre_rol = roles.get(int(user["fk_rol"]), "Sin rol")
+        return self._start_login_mfa(user, nombre_rol, ip=ip)
 
     def logout(self, user_id: int, *, ip: str | None = None, jti: str | None = None) -> None:
         if jti:

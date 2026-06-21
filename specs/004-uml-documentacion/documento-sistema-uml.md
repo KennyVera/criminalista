@@ -77,6 +77,7 @@ P09,P10,P11 → P12 → alimenta Nivel Estratégico (CU-E01..E10)
 [A05/Sistema] ── CU-O61..O76 Auditoría total (NUEVO) ─► (P03 transversal a P01..P12)
 [A03 Analista]── CU-O16..O20 Analítica criminal ──────► (P04)
 [A02 Investig]── CU-O21..O25 Expedientes ─────────────► (P05)
+[A06 Comisario/Oficial]─ CU-O77..O78 Patrulla/Despacho (NUEVO) ─► (P05)
 [A04 Custodio]── CU-O26..O30 Evidencias ──────────────► (P06)
 [A02 Investig]── CU-O31..O35 Involucrados ────────────► (P07)
 [A06 Usuario] ── CU-O36..O40 Reportería ──────────────► (P08)
@@ -96,7 +97,7 @@ P09,P10,P11 → P12 → alimenta Nivel Estratégico (CU-E01..E10)
 | P02 | CU-O06, CU-O07, CU-O08, CU-O09, CU-O10; (CU-T08, CU-T14 parcial) |
 | P03 | CU-O11, CU-O12, CU-O13, CU-O14, CU-O15; **CU-O61…CU-O76 (NIVEL AUDITORÍA, nuevos)**; (CU-T12) |
 | P04 | CU-O16, CU-O17, CU-O18, CU-O19, CU-O20; (CU-T11, CU-E01) |
-| P05 | CU-O21, CU-O22, CU-O23, CU-O24, CU-O25 |
+| P05 | CU-O21, CU-O22, CU-O23, CU-O24, CU-O25; **CU-O77, CU-O78 (OPERACIONES DE PATRULLA, nuevos)** |
 | P06 | CU-O26, CU-O27, CU-O28, CU-O29, CU-O30 |
 | P07 | CU-O31, CU-O32, CU-O33, CU-O34, CU-O35 |
 | P08 | CU-O36, CU-O37, CU-O38, CU-O39, CU-O40; (CU-E08) |
@@ -114,7 +115,7 @@ P09,P10,P11 → P12 → alimenta Nivel Estratégico (CU-E01..E10)
 | A03 Analista Criminal | CU-O16–CU-O20, CU-O35 |
 | A04 Custodio | CU-O15, CU-O26–CU-O30 |
 | A05 Auditor | CU-O11–CU-O15, **CU-O61–CU-O76 (auditoría total)**, CU-T12 |
-| A06 Usuario Institucional | CU-O01–CU-O05, CU-O36–CU-O40 |
+| A06 Usuario Institucional | CU-O01–CU-O05, CU-O36–CU-O40; **CU-O77 (Comisario asigna), CU-O78 (Comisario despacha y cierra; Oficial registra/atiende/reporta)** |
 | A07 Ejecutivo | CU-E01–CU-E10, CU-O59 |
 | A08 Gerente Comercial | CU-O41–CU-O45, CU-T02–CU-T04, CU-T07, CU-T13, CU-T14 |
 | A09 Especialista Growth | CU-O41, CU-T01 |

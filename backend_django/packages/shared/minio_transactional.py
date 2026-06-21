@@ -4,6 +4,7 @@ Tablas transaccionales en MinIO (Parquet) — capa operativa RBAC, evidencias, a
 
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -24,6 +25,9 @@ TRANSACTIONAL_COLLECTIONS = [
     "app_expediente_bitacora",
     "app_audit_logs",
     "app_dashboard_summary",
+    "app_patrullas",
+    "app_patrulla_oficiales",
+    "app_incidentes",
 ]
 
 SCHEMAS: dict[str, list[str]] = {
@@ -79,10 +83,15 @@ SCHEMAS: dict[str, list[str]] = {
         "fk_caso",
         "fk_usuario_carga",
         "tipo_evidencia",
+        "nombre_archivo",
         "minio_url",
         "peso_mb",
+        "hash_sha256",
+        "algoritmo_hash",
         "estado_custodia",
         "fecha_subida",
+        "fecha_actualizacion_custodia",
+        "fk_usuario_custodia",
     ],
     "app_asignaciones": [
         "id_asignacion",
@@ -136,6 +145,56 @@ SCHEMAS: dict[str, list[str]] = {
         "datos_nuevos",
         "direccion_ip",
         "fecha_hora",
+        "previous_hash",
+        "event_hash",
+    ],
+    "app_patrullas": [
+        "id_patrulla",
+        "codigo",
+        "sector",
+        "turno",
+        "estado",
+        "fk_comisario",
+        "comisario_nombre",
+        "notas",
+        "fecha_creacion",
+        "fecha_actualizacion",
+        "activo",
+    ],
+    "app_patrulla_oficiales": [
+        "id_patrulla_oficial",
+        "fk_patrulla",
+        "fk_oficial",
+        "oficial_nombre",
+        "oficial_placa",
+        "rol_patrulla",
+        "fecha_asignacion",
+        "estado",
+    ],
+    "app_incidentes": [
+        "id_incidente",
+        "codigo",
+        "tipo",
+        "descripcion",
+        "ubicacion",
+        "prioridad",
+        "estado",
+        "reportante",
+        "fk_patrulla",
+        "patrulla_codigo",
+        "fk_operador",
+        "operador_nombre",
+        "fk_comisario",
+        "comisario_nombre",
+        "notas_despacho",
+        "apoyo_solicitado",
+        "resultado_atencion",
+        "parte_policial",
+        "motivo_devolucion",
+        "fecha_reporte",
+        "fecha_despacho",
+        "fecha_atendido",
+        "fecha_cierre",
     ],
     "app_dashboard_summary": [
         "id_summary",
@@ -168,6 +227,25 @@ class TransactionalMinioStore(MinioParquetStore):
             raise ValueError(f"Tabla transaccional desconocida: {name}")
         self.write_df(name, df)
 
+    @staticmethod
+    def compute_audit_hash(previous_hash: str, row: dict[str, Any]) -> str:
+        """Hash encadenado (CU-O75): sella el evento con el hash del anterior."""
+        canonical = "|".join(
+            str(row.get(field, ""))
+            for field in (
+                "fk_usuario",
+                "accion",
+                "tabla_afectada",
+                "detalle",
+                "datos_anteriores",
+                "datos_nuevos",
+                "direccion_ip",
+                "fecha_hora",
+            )
+        )
+        payload = f"{previous_hash}|{canonical}"
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     def append_row(self, name: str, row: dict[str, Any]) -> dict[str, Any]:
         df = self.read_table(name)
         new_id_col = {
@@ -182,9 +260,21 @@ class TransactionalMinioStore(MinioParquetStore):
             "app_expediente_bitacora": "id_bitacora",
             "app_audit_logs": "id_log",
             "app_dashboard_summary": "id_summary",
+            "app_patrullas": "id_patrulla",
+            "app_patrulla_oficiales": "id_patrulla_oficial",
+            "app_incidentes": "id_incidente",
         }[name]
         if new_id_col not in row or row[new_id_col] is None:
             row[new_id_col] = int(df[new_id_col].max()) + 1 if len(df) else 1
+        if name == "app_audit_logs":
+            # Sello criptográfico encadenado: cada evento incluye el hash del previo.
+            prev_hash = ""
+            if len(df) and "event_hash" in df.columns:
+                ordered = df.sort_values("id_log")
+                last = str(ordered["event_hash"].iloc[-1] or "")
+                prev_hash = last
+            row["previous_hash"] = prev_hash
+            row["event_hash"] = self.compute_audit_hash(prev_hash, row)
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         self.write_table(name, df)
         return row

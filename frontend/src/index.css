@@ -285,6 +285,10 @@
     @apply border-amber-200/80 bg-amber-50/80 text-amber-900 backdrop-blur-sm;
   }
 
+  .alert-banner--success {
+    @apply border-emerald-200/80 bg-emerald-50/80 text-emerald-800 backdrop-blur-sm;
+  }
+
   /* ── Info panels ── */
   .info-panel {
     @apply relative overflow-hidden rounded-[20px] border border-white/90 bg-white/90 p-6 shadow-[var(--shadow-card)] backdrop-blur-md;

@@ -1,12 +1,132 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Upload, Fingerprint, FileArchive } from 'lucide-react'
+import { Upload, Fingerprint, FileArchive, ShieldCheck, Hash } from 'lucide-react'
 import { expedientesApi } from '../../../api/expedientes'
+import { evidenciasApi } from '../../../api/evidencias'
 import { Button, Card, Spinner } from '../../../components/ui'
 import { useToast } from '../../../context/ToastContext'
+
+const CUSTODY_BADGE = {
+  'En custodia': 'status-badge--active',
+  'En análisis': 'status-badge--info',
+  Transferida: 'status-badge--warning',
+  Liberada: 'status-badge--neutral',
+  Destruida: 'status-badge--danger',
+}
+
+function custodyBadgeClass(estado) {
+  return CUSTODY_BADGE[estado] || 'status-badge--neutral'
+}
+
+function EvidenceItem({ ev, transiciones, onChanged }) {
+  const toast = useToast()
+  const opciones = transiciones[ev.estado_custodia] || []
+  const [target, setTarget] = useState('')
+  const [motivo, setMotivo] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const apply = async () => {
+    if (!target) {
+      toast.error('Seleccione un estado', 'Elija el nuevo estado de custodia')
+      return
+    }
+    setSaving(true)
+    try {
+      await evidenciasApi.cambiarCustodia(ev.id_evidencia, { estado: target, motivo })
+      toast.success('Custodia actualizada', `Evidencia #${ev.id_evidencia} → ${target}`)
+      setTarget('')
+      setMotivo('')
+      onChanged()
+    } catch (err) {
+      toast.error('Error', err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const hash = String(ev.hash_sha256 || '')
+
+  return (
+    <li className="rounded-xl border border-slate-200/70 bg-white/60 px-4 py-3 text-sm shadow-sm">
+      <div className="flex items-center gap-2">
+        <FileArchive className="h-4 w-4 text-indigo-500" />
+        <p className="font-semibold text-slate-900">
+          {ev.nombre_archivo || ev.tipo_evidencia}
+        </p>
+        <span className={`status-badge ${custodyBadgeClass(ev.estado_custodia)} ml-auto`}>
+          {ev.estado_custodia}
+        </span>
+      </div>
+
+      <p className="mt-1 break-all text-xs text-slate-500">{ev.minio_url}</p>
+
+      {hash && (
+        <div
+          className="mt-2 flex items-center gap-1.5 text-xs text-slate-500"
+          title={`${ev.algoritmo_hash || 'SHA-256'}: ${hash}`}
+        >
+          <Hash className="h-3.5 w-3.5 text-emerald-600" />
+          <span className="font-medium text-slate-600">{ev.algoritmo_hash || 'SHA-256'}</span>
+          <code className="break-all font-mono text-[11px] text-slate-500">
+            {hash.slice(0, 24)}…{hash.slice(-8)}
+          </code>
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
+        <span className="status-badge status-badge--neutral">{ev.peso_mb} MB</span>
+        <span>{ev.tipo_evidencia}</span>
+        <span>{ev.fecha_subida}</span>
+      </div>
+
+      {opciones.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
+          <label className="flex-1 min-w-[140px]">
+            <span className="mb-1 block text-[11px] font-medium text-slate-500">
+              Nuevo estado
+            </span>
+            <select
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-black"
+            >
+              <option value="">Seleccionar…</option>
+              {opciones.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex-[2] min-w-[160px]">
+            <span className="mb-1 block text-[11px] font-medium text-slate-500">
+              Motivo (opcional)
+            </span>
+            <input
+              type="text"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej. Enviada a laboratorio"
+              className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-black"
+            />
+          </label>
+          <Button type="button" size="sm" onClick={apply} disabled={saving}>
+            {saving ? <Spinner size="sm" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+            Cambiar
+          </Button>
+        </div>
+      ) : (
+        <p className="mt-2 text-[11px] italic text-slate-400">
+          Estado terminal — sin transiciones disponibles.
+        </p>
+      )}
+    </li>
+  )
+}
 
 export default function TabEvidencias({ caseNumber }) {
   const toast = useToast()
   const [items, setItems] = useState([])
+  const [transiciones, setTransiciones] = useState({})
   const [loading, setLoading] = useState(true)
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -27,6 +147,13 @@ export default function TabEvidencias({ caseNumber }) {
     load()
   }, [load])
 
+  useEffect(() => {
+    evidenciasApi
+      .custodiaOpciones()
+      .then((res) => setTransiciones(res.transiciones || {}))
+      .catch(() => setTransiciones({}))
+  }, [])
+
   const upload = async (e) => {
     e.preventDefault()
     if (!file) {
@@ -39,7 +166,7 @@ export default function TabEvidencias({ caseNumber }) {
     fd.append('tipo_evidencia', 'Multimedia')
     try {
       await expedientesApi.uploadEvidencia(caseNumber, fd)
-      toast.success('Subido', 'Evidencia guardada en MinIO')
+      toast.success('Subido', 'Evidencia guardada con hash SHA-256')
       setFile(null)
       load()
     } catch (err) {
@@ -67,21 +194,12 @@ export default function TabEvidencias({ caseNumber }) {
         ) : (
           <ul className="space-y-2.5">
             {items.map((ev) => (
-              <li
+              <EvidenceItem
                 key={ev.id_evidencia}
-                className="rounded-xl border border-slate-200/70 bg-white/60 px-4 py-3 text-sm shadow-sm"
-              >
-                <div className="flex items-center gap-2">
-                  <FileArchive className="h-4 w-4 text-indigo-500" />
-                  <p className="font-semibold text-slate-900">{ev.tipo_evidencia}</p>
-                </div>
-                <p className="mt-1 break-all text-xs text-slate-500">{ev.minio_url}</p>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
-                  <span className="status-badge status-badge--neutral">{ev.peso_mb} MB</span>
-                  <span>{ev.fecha_subida}</span>
-                  <span className="status-badge status-badge--active">{ev.estado_custodia}</span>
-                </div>
-              </li>
+                ev={ev}
+                transiciones={transiciones}
+                onChanged={load}
+              />
             ))}
           </ul>
         )}
@@ -109,6 +227,9 @@ export default function TabEvidencias({ caseNumber }) {
               )}
             </div>
           </label>
+          <p className="text-xs text-slate-500">
+            Al subir se calcula automáticamente el hash SHA-256 para garantizar la integridad.
+          </p>
           <Button type="submit" disabled={busy}>
             <Upload className="h-4 w-4" />
             Subir evidencia

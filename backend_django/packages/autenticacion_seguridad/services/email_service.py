@@ -1,7 +1,26 @@
 from __future__ import annotations
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage, send_mail
+
+
+def send_report_email(
+    *,
+    to_emails: list[str],
+    subject: str,
+    body: str,
+    pdf_bytes: bytes,
+    filename: str,
+) -> None:
+    """Envía un reporte PDF como adjunto a uno o varios destinatarios (CU-O40)."""
+    msg = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[e for e in to_emails if e],
+    )
+    msg.attach(filename, pdf_bytes, "application/pdf")
+    msg.send(fail_silently=False)
 
 
 def send_password_reset_code(*, to_email: str, code: str, nombre: str) -> None:
@@ -11,6 +30,27 @@ def send_password_reset_code(*, to_email: str, code: str, nombre: str) -> None:
         f"Recibimos una solicitud para restablecer tu contraseña en CrimeTrack Analytics.\n\n"
         f"Tu código de verificación es: {code}\n\n"
         f"Este código expira en 15 minutos. Si no solicitaste este cambio, ignora este mensaje.\n\n"
+        f"— Equipo CrimeTrack Soporte\n"
+        f"{getattr(settings, 'DEFAULT_FROM_EMAIL', '')}"
+    )
+    send_mail(
+        subject,
+        body,
+        settings.DEFAULT_FROM_EMAIL,
+        [to_email],
+        fail_silently=False,
+    )
+
+
+def send_login_mfa_code(*, to_email: str, code: str, nombre: str, minutes: int = 5) -> None:
+    """Envía el código de verificación de segundo factor (2FA) para el inicio de sesión."""
+    subject = "CrimeTrack — Código de verificación de inicio de sesión"
+    body = (
+        f"Hola {nombre},\n\n"
+        f"Detectamos un inicio de sesión en tu cuenta de administrador en CrimeTrack Analytics.\n\n"
+        f"Tu código de verificación es: {code}\n\n"
+        f"Ingresa este código para completar el acceso. Expira en {minutes} minutos.\n"
+        f"Si no fuiste tú, cambia tu contraseña de inmediato.\n\n"
         f"— Equipo CrimeTrack Soporte\n"
         f"{getattr(settings, 'DEFAULT_FROM_EMAIL', '')}"
     )

@@ -3,6 +3,7 @@ from django.urls import path
 from packages.expedientes_criminales.views import (
     ExpedienteBitacoraView,
     ExpedienteCabeceraView,
+    ExpedienteCierreRequisitosView,
     ExpedienteDetallesGeneralesView,
     ExpedienteEvidenciasView,
     ExpedienteInformePdfView,
@@ -34,6 +35,11 @@ urlpatterns = [
         "<str:case_number>/bitacora/",
         ExpedienteBitacoraView.as_view(),
         name="expediente-bitacora",
+    ),
+    path(
+        "<str:case_number>/cierre/requisitos/",
+        ExpedienteCierreRequisitosView.as_view(),
+        name="expediente-cierre-requisitos",
     ),
     path(
         "<str:case_number>/informe-pdf/",

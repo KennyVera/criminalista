@@ -45,7 +45,7 @@ DEFAULT_POLITICAS = [
     ("Longitud mínima contraseña", "pwd_min_length", "8", True),
     ("Intentos login máximos", "login_max_attempts", "5", True),
     ("Sesión expira (horas)", "session_hours", "12", True),
-    ("2FA obligatorio Admin", "admin_2fa_required", "false", False),
+    ("2FA obligatorio Admin", "admin_2fa_required", "true", True),
 ]
 
 DEFAULT_PARAMETROS = [

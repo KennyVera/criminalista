@@ -31,7 +31,7 @@ const POLICY_META = {
   admin_2fa_required: {
     label: '2FA obligatorio Admin',
     type: 'boolean',
-    hint: 'Reservado: autenticación en dos pasos para administradores (próximamente).',
+    hint: 'Si está activa y en true, los administradores reciben un código por correo al iniciar sesión.',
   },
 }
 
@@ -110,7 +110,7 @@ export default function AdminPoliciesPage() {
           disabled={!draft[id]?.activa}
         >
           <option value="false">false — no obligatorio</option>
-          <option value="true">true — obligatorio (cuando exista 2FA)</option>
+          <option value="true">true — obligatorio (código por correo)</option>
         </select>
       )
     }

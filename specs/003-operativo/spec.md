@@ -2,7 +2,8 @@
 
 > Nivel empresarial **Operativo**. Casos de uso CU-O01…CU-O60, organizados por paquete UML
 > (P01–P12), **más los 16 casos de uso nuevos de auditoría CU-O61…CU-O76** (NIVEL AUDITORÍA, P03,
-> "Implementado adicional"). Subordinada a la constitución y a `000-sistema-general/`. **Sin
+> "Implementado adicional") **y los 2 casos nuevos de operaciones de patrulla CU-O77…CU-O78**
+> (P05, "Implementado adicional"). Subordinada a la constitución y a `000-sistema-general/`. **Sin
 > implementación de código.** El detalle completo de cada caso de uso (actor, objetivo, precondición,
 > flujo principal, flujo alternativo y criterio de aceptación) está en
 > `004-uml-documentacion/casos-uso.md`. La **ampliación de P03** (diagnóstico, arquitectura, modelo
@@ -43,7 +44,7 @@ Operativo.
 | P02 Administración del Sistema | OP2 | CU-O06, CU-O07, CU-O08, CU-O09, CU-O10 |
 | P03 Auditoría y Trazabilidad | OP3 | CU-O11, CU-O12, CU-O13, CU-O14, CU-O15; **CU-O61…CU-O76 (NIVEL AUDITORÍA, nuevos)** |
 | P04 Dashboard y Analítica Criminal | OP4 | CU-O16, CU-O17, CU-O18, CU-O19, CU-O20 |
-| P05 Gestión de Expedientes | OP5 | CU-O21, CU-O22, CU-O23, CU-O24, CU-O25 |
+| P05 Gestión de Expedientes | OP5 | CU-O21, CU-O22, CU-O23, CU-O24, CU-O25; **CU-O77, CU-O78 (operaciones de patrulla, nuevos)** |
 | P06 Gestión de Evidencias Digitales | OP6 | CU-O26, CU-O27, CU-O28, CU-O29, CU-O30 |
 | P07 Gestión de Involucrados | OP7 | CU-O31, CU-O32, CU-O33, CU-O34, CU-O35 |
 | P08 Reportería y Exportación | OP8 | CU-O36, CU-O37, CU-O38, CU-O39, CU-O40 |

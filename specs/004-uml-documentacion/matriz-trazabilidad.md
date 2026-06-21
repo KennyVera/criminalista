@@ -153,13 +153,26 @@
 
 ---
 
+## E. Matriz Operativa — OPERACIONES DE PATRULLA (CU-O77…CU-O78, NUEVOS)
+
+> **Implementado adicional.** Extienden P05 (OP5) hacia la coordinación de patrullas y despacho,
+> sin alterar CU-O21…CU-O25. Depto. **D07 Operaciones Criminalísticas**. La función de despacho la
+> asume el **Oficial (A06)** como Operador de Central, supervisado por el **Comisario**.
+
+| CU | HU | OE | OT | OP | Paquete | Actor | Depto | RF | KPI | Módulo | Resultado esperado |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| CU-O77 | HU-O-77 | OE4 | OT6 | OP5 | P05 | A06 (Comisario), A06 (Oficial) | D07 | RF-O-P05 | KPI-20 | Asignar patrulla | Patrulla conformada sin solapes + auditoría |
+| CU-O78 | HU-O-78, HU-O-78b | OE4 | OT6 | OP5 | P05 | A06 (Comisario, despacha/cierra), A06 (Oficial, registra/atiende/reporta), Sistema | D07 | RF-O-P05 | KPI-20 | Despachar y atender incidente | Comisario despacha y cierra; Oficial recibe/atiende; ciclo auditado |
+
+---
+
 ## Verificación de Cobertura (sin huérfanos)
 
 | Comprobación | Resultado |
 |---|---|
-| Todo CU tiene HU asociada | ✔ 102/102 (incl. CU-O61…O76) |
-| Todo CU traza a un OE | ✔ 102/102 |
-| Todo CU pertenece a un paquete (P01–P12) | ✔ (CU-O61…O76 en P03) |
+| Todo CU tiene HU asociada | ✔ 104/104 (incl. CU-O61…O76 y CU-O77…O78) |
+| Todo CU traza a un OE | ✔ 104/104 |
+| Todo CU pertenece a un paquete (P01–P12) | ✔ (CU-O61…O76 en P03; CU-O77…O78 en P05) |
 | Todo OE se materializa en CU/HU | ✔ OE1–OE4 cubiertos |
 | Todo CU tiene criterio de aceptación | ✔ (ver `casos-uso.md`) |
 | Criterio detallado Dado/Cuando/Entonces | ✔ en `casos-uso.md` |

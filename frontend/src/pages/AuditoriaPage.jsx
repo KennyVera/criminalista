@@ -87,6 +87,8 @@ export default function AuditoriaPage() {
   })
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [integrity, setIntegrity] = useState(null)
   const [selected, setSelected] = useState(null)
 
   const load = useCallback(async () => {
@@ -138,6 +140,28 @@ export default function AuditoriaPage() {
     }
   }
 
+  const handleVerify = async () => {
+    setVerifying(true)
+    try {
+      const [cadena, custodia] = await Promise.all([
+        auditoriaApi.verificarIntegridad(),
+        auditoriaApi.verificarCustodia(),
+      ])
+      const ok = cadena.ok && custodia.ok
+      setIntegrity({ cadena, custodia, ok })
+      if (ok) {
+        toast.success('Integridad verificada', 'La cadena de auditoría y la custodia son íntegras.')
+      } else {
+        toast.error('Alerta de integridad', 'Se detectaron observaciones. Revise el detalle.')
+      }
+      load()
+    } catch (err) {
+      toast.error('Error', err.message)
+    } finally {
+      setVerifying(false)
+    }
+  }
+
   const activeFilters = useMemo(
     () => Object.entries(filters).filter(([, v]) => v !== '').length,
     [filters]
@@ -174,6 +198,15 @@ export default function AuditoriaPage() {
             </Button>
             <Button
               type="button"
+              variant="secondary"
+              onClick={handleVerify}
+              disabled={verifying}
+            >
+              <ShieldCheck className={verifying ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} />
+              Verificar integridad
+            </Button>
+            <Button
+              type="button"
               variant="primary"
               onClick={handleExport}
               disabled={exporting || data.total === 0}
@@ -184,6 +217,65 @@ export default function AuditoriaPage() {
           </>
         }
       />
+
+      {integrity && (
+        <div
+          className={cn(
+            'rounded-2xl border px-5 py-4',
+            integrity.ok
+              ? 'border-emerald-200 bg-emerald-50/70'
+              : 'border-rose-200 bg-rose-50/70'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            {integrity.ok ? (
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            ) : (
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+            )}
+            <div className="flex-1">
+              <p className={cn('font-semibold', integrity.ok ? 'text-emerald-800' : 'text-rose-800')}>
+                {integrity.ok
+                  ? 'Integridad verificada (CU-O75 / CU-O15)'
+                  : 'Se detectaron alertas de integridad'}
+              </p>
+              <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
+                <li>
+                  <span className="font-medium">Cadena de auditoría:</span> {integrity.cadena.mensaje}{' '}
+                  ({integrity.cadena.verificados} verificados
+                  {integrity.cadena.sin_sello ? `, ${integrity.cadena.sin_sello} sin sello` : ''})
+                </li>
+                <li>
+                  <span className="font-medium">Cadena de custodia:</span> {integrity.custodia.mensaje}{' '}
+                  ({integrity.custodia.verificadas} verificadas)
+                </li>
+              </ul>
+              {!integrity.ok && (
+                <div className="mt-2 space-y-1 text-xs text-rose-700">
+                  {(integrity.cadena.rupturas || []).slice(0, 5).map((r) => (
+                    <p key={`c-${r.id_log}`}>
+                      · Evento #{r.id_log} ({r.accion}): {r.problemas.join('; ')}
+                    </p>
+                  ))}
+                  {(integrity.custodia.alertas || []).slice(0, 5).map((a, i) => (
+                    <p key={`e-${a.id_evidencia}-${i}`}>
+                      · Evidencia #{a.id_evidencia} (caso {a.caso}): {a.motivo}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIntegrity(null)}
+              className="rounded-lg p-1 text-slate-400 transition hover:bg-white/60 hover:text-slate-600"
+              aria-label="Cerrar"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

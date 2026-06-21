@@ -46,3 +46,18 @@ export function canViewInvestigacionProgress(user) {
   const r = normalizeRole(user)
   return r === 'comisario' || r === 'detective' || r === 'admin'
 }
+
+export function isOficial(user) {
+  return normalizeRole(user) === 'oficial'
+}
+
+export function canManagePatrullas(user) {
+  const r = normalizeRole(user)
+  return r === 'comisario' || r === 'admin'
+}
+
+// Solo el Comisario (y Admin) despacha y supervisa el cierre.
+export function canDespachar(user) {
+  const r = normalizeRole(user)
+  return r === 'comisario' || r === 'admin'
+}

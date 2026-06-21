@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Clock, PenLine } from 'lucide-react'
+import { Clock, PenLine, CheckCircle2, XCircle, Lock } from 'lucide-react'
 import { expedientesApi } from '../../../api/expedientes'
 import { Button, Card, Spinner } from '../../../components/ui'
 import { useToast } from '../../../context/ToastContext'
 
 const ESTADOS = ['Abierto', 'En investigación', 'Resuelto', 'Cerrado', 'Archivado']
+const ESTADOS_CIERRE = ['Cerrado', 'Archivado']
+
+const CHECK_LABELS = {
+  involucrados: 'Al menos un involucrado registrado',
+  evidencias: 'Al menos una evidencia cargada',
+  custodia: 'Cadena de custodia íntegra (sin evidencias destruidas)',
+  avance: 'Avance del caso al 100%',
+}
 
 export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInicial = 'En investigación' }) {
   const toast = useToast()
@@ -13,6 +21,7 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
   const [nota, setNota] = useState('')
   const [avance, setAvance] = useState(avanceInicial)
   const [estado, setEstado] = useState(estadoInicial)
+  const [req, setReq] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -30,9 +39,20 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
     }
   }, [caseNumber, toast])
 
+  const loadReq = useCallback(async () => {
+    try {
+      setReq(await expedientesApi.cierreRequisitos(caseNumber))
+    } catch {
+      setReq(null)
+    }
+  }, [caseNumber])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadReq()
+  }, [load, loadReq])
+
+  const isClosing = ESTADOS_CIERRE.includes(estado)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -49,6 +69,7 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
       toast.success('Registrado', 'Entrada agregada a la bitácora')
       setNota('')
       load()
+      loadReq()
     } catch (err) {
       toast.error('Error', err.message)
     }
@@ -120,6 +141,41 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
             </select>
           </label>
 
+          {isClosing && req && (
+            <div
+              className={`rounded-xl border px-4 py-3 ${
+                req.ok
+                  ? 'border-emerald-200 bg-emerald-50/60'
+                  : 'border-amber-200 bg-amber-50/60'
+              }`}
+            >
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <Lock className="h-4 w-4" />
+                Requisitos de cierre (RN-09)
+              </div>
+              <ul className="space-y-1.5">
+                {Object.entries(CHECK_LABELS).map(([key, label]) => {
+                  const ok = req.checks?.[key]
+                  return (
+                    <li key={key} className="flex items-center gap-2 text-xs text-slate-700">
+                      {ok ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                      ) : (
+                        <XCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                      )}
+                      <span className={ok ? '' : 'text-slate-600'}>{label}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+              {!req.ok && (
+                <p className="mt-2 text-xs font-medium text-amber-700">
+                  Completa los pendientes para poder cerrar el expediente.
+                </p>
+              )}
+            </div>
+          )}
+
           <label className="block text-sm font-medium text-slate-700">
             Nota de bitácora
             <textarea
@@ -132,7 +188,9 @@ export default function TabBitacora({ caseNumber, avanceInicial = 0, estadoInici
             />
           </label>
 
-          <Button type="submit">Agregar a bitácora</Button>
+          <Button type="submit" disabled={isClosing && req && !req.ok}>
+            Agregar a bitácora
+          </Button>
         </form>
       </Card>
     </div>

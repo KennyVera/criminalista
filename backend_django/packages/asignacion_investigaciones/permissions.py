@@ -24,3 +24,23 @@ class IsComisarioOrDetectiveJWT(BasePermission):
             return False
         role = str(getattr(request, "crimetrack_user", {}).get("nombre_rol", "")).lower()
         return role in ("comisario", "detective", "admin")
+
+
+class IsDespachoJWT(BasePermission):
+    """Despacho/Operaciones de patrulla: Comisario, Oficial (operador) o Admin."""
+
+    def has_permission(self, request: Request, view) -> bool:
+        if not _attach_user_from_token(request):
+            return False
+        role = str(getattr(request, "crimetrack_user", {}).get("nombre_rol", "")).lower()
+        return role in ("comisario", "oficial", "admin")
+
+
+class IsOficialJWT(BasePermission):
+    """Vista del oficial receptor: Oficial (o Comisario/Admin para supervisión)."""
+
+    def has_permission(self, request: Request, view) -> bool:
+        if not _attach_user_from_token(request):
+            return False
+        role = str(getattr(request, "crimetrack_user", {}).get("nombre_rol", "")).lower()
+        return role in ("oficial", "comisario", "admin")

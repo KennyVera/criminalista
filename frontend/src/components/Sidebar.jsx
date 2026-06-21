@@ -19,6 +19,10 @@ import {
   Table2,
   Database,
   Shield,
+  Sparkles,
+  FileText,
+  Radio,
+  Navigation,
 } from 'lucide-react'
 import GenerateDataButton from './GenerateDataButton'
 import BrandLogo from './layout/BrandLogo'
@@ -30,6 +34,10 @@ import {
   canManageAsignaciones,
   canViewInvestigacionProgress,
   canViewDashboard,
+  canViewOperationalIndicators,
+  canManagePatrullas,
+  canDespachar,
+  isOficial,
 } from '../utils/roles'
 
 function NavSection({ title, open, onToggle, collapsed, children }) {
@@ -61,9 +69,15 @@ export default function Sidebar({
   const isAdmin = canAccessAdmin(user)
   const showDataMenu = canAccessDataCrud(user)
   const showDashboard = canViewDashboard(user)
+  const showPrediccion = canViewOperationalIndicators(user)
   const showAsignaciones = canManageAsignaciones(user)
   const showProgreso = canViewInvestigacionProgress(user)
+  const showPatrullas = canManagePatrullas(user)
+  const showDespacho = canDespachar(user)
+  const showMisPatrullas = isOficial(user)
+  const showOperaciones = showPatrullas || showDespacho || showMisPatrullas
   const [invOpen, setInvOpen] = useState(false)
+  const [opsOpen, setOpsOpen] = useState(false)
   const [tablesOpen, setTablesOpen] = useState(false)
   const [securityOpen, setSecurityOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
@@ -107,6 +121,26 @@ export default function Sidebar({
             {!collapsed && <span>Panel de control</span>}
           </NavLink>
         )}
+        {showPrediccion && (
+          <NavLink
+            to="/analitica/prediccion"
+            className={linkClass}
+            title={collapsed ? 'Predicción criminal' : undefined}
+          >
+            <Sparkles className="h-[18px] w-[18px] shrink-0" aria-hidden />
+            {!collapsed && <span>Predicción criminal</span>}
+          </NavLink>
+        )}
+        {showPrediccion && (
+          <NavLink
+            to="/reportes"
+            className={linkClass}
+            title={collapsed ? 'Reportes' : undefined}
+          >
+            <FileText className="h-[18px] w-[18px] shrink-0" aria-hidden />
+            {!collapsed && <span>Reportes</span>}
+          </NavLink>
+        )}
 
         {(showAsignaciones || showProgreso) && (
           <NavSection
@@ -136,6 +170,40 @@ export default function Sidebar({
                 <NavLink to="/tabla/dim_caso" className={linkClass}>
                   <Briefcase className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
                   {!collapsed && <span className="truncate">Casos</span>}
+                </NavLink>
+              </li>
+            )}
+          </NavSection>
+        )}
+
+        {showOperaciones && (
+          <NavSection
+            title="Operaciones de patrulla"
+            open={opsOpen}
+            onToggle={() => setOpsOpen((o) => !o)}
+            collapsed={collapsed}
+          >
+            {showPatrullas && (
+              <li>
+                <NavLink to="/operaciones/patrullas" className={linkClass}>
+                  <ShieldCheck className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {!collapsed && <span className="truncate">Patrullas</span>}
+                </NavLink>
+              </li>
+            )}
+            {showDespacho && (
+              <li>
+                <NavLink to="/operaciones/despacho" className={linkClass}>
+                  <Radio className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {!collapsed && <span className="truncate">Central de despacho</span>}
+                </NavLink>
+              </li>
+            )}
+            {showMisPatrullas && (
+              <li>
+                <NavLink to="/operaciones/mis-patrullas" className={linkClass}>
+                  <Navigation className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {!collapsed && <span className="truncate">Mis patrullas</span>}
                 </NavLink>
               </li>
             )}

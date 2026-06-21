@@ -16,6 +16,11 @@ import ProgresoInvestigacionPage from '../pages/investigaciones/ProgresoInvestig
 import ExpedienteDetailPage from '../pages/expedientes/ExpedienteDetailPage'
 import ActiveSessionsPage from '../pages/ActiveSessionsPage'
 import AuditoriaPage from '../pages/AuditoriaPage'
+import PrediccionPage from '../pages/PrediccionPage'
+import ReportesPage from '../pages/ReportesPage'
+import PatrullasPage from '../pages/PatrullasPage'
+import DespachoPage from '../pages/DespachoPage'
+import MisPatrullasPage from '../pages/MisPatrullasPage'
 import AdminUsersPage from '../pages/admin/AdminUsersPage'
 import AdminPermissionsPage from '../pages/admin/AdminPermissionsPage'
 import AdminPoliciesPage from '../pages/admin/AdminPoliciesPage'
@@ -43,8 +48,13 @@ function NormalAppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="tabla/:slug" element={<CollectionCrud />} />
         <Route path="generar-datos" element={<GenerateDataPage />} />
+        <Route path="analitica/prediccion" element={<PrediccionPage />} />
+        <Route path="reportes" element={<ReportesPage />} />
         <Route path="investigaciones/asignar" element={<AsignarDetectivePage />} />
         <Route path="investigaciones/progreso" element={<ProgresoInvestigacionPage />} />
+        <Route path="operaciones/patrullas" element={<PatrullasPage />} />
+        <Route path="operaciones/despacho" element={<DespachoPage />} />
+        <Route path="operaciones/mis-patrullas" element={<MisPatrullasPage />} />
         <Route path="expedientes/:numeroCaso" element={<ExpedienteDetailPage />} />
         <Route path="seguridad/sesiones-activas" element={<ActiveSessionsPage />} />
         <Route path="seguridad/auditoria" element={<AuditoriaPage />} />

@@ -7,6 +7,8 @@ from packages.autenticacion_seguridad.views import (
     LoginView,
     LogoutView,
     MeView,
+    MfaResendView,
+    MfaVerifyView,
     RequestPasswordResetView,
     ResetPasswordView,
     RolesListView,
@@ -15,6 +17,8 @@ from packages.autenticacion_seguridad.views import (
 
 urlpatterns = [
     path("login/", LoginView.as_view(), name="auth-login"),
+    path("mfa/verificar/", MfaVerifyView.as_view(), name="auth-mfa-verify"),
+    path("mfa/reenviar/", MfaResendView.as_view(), name="auth-mfa-resend"),
     path("logout/", LogoutView.as_view(), name="auth-logout"),
     path("me/", MeView.as_view(), name="auth-me"),
     path("roles/", RolesListView.as_view(), name="auth-roles"),

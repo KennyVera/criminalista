@@ -13,6 +13,8 @@
 - Operativos: CU-O01…CU-O60 (Nivel operativo, P01–P12).
 - **Operativos — NIVEL AUDITORÍA (NUEVOS):** CU-O61…CU-O76 (Nivel operativo, P03). Ver sección
   **"CASOS DE USO NUEVOS — NIVEL AUDITORÍA (P03)"**.
+- **Operativos — OPERACIONES DE PATRULLA (NUEVOS):** CU-O77…CU-O78 (Nivel operativo, P05). Ver
+  sección **"CASOS DE USO NUEVOS — OPERACIONES DE PATRULLA (P05)"**.
 
 ---
 
@@ -1026,6 +1028,47 @@
 - **Criterio de aceptación:** Dada una política de retención, Cuando vence un rango, Entonces los logs se archivan sin perder integridad y el archivado queda autorizado y registrado.
 - **Dependencias:** núcleo de auditoría, almacenamiento (PC-A1).
 - **Fuera de alcance:** borrado físico definitivo (sujeto a política legal).
+
+---
+
+## CASOS DE USO NUEVOS — OPERACIONES DE PATRULLA (P05)
+
+> **Implementado adicional.** Extienden el paquete **P05 — Gestión de Expedientes** hacia la
+> **coordinación operativa de patrullas y despacho**, por analogía con CU-O22 (asignación de
+> responsable). No alteran CU-O21…CU-O25. Departamento responsable: **D07 Operaciones
+> Criminalísticas**. Como el catálogo no incluye un actor "Despachador", la función de central de
+> despacho la asume el **Oficial (A06 Usuario Institucional, operativo)** en el rol de Operador de
+> Central, bajo supervisión del **Comisario**.
+
+### CU-O77 — Asignar patrulla a oficiales
+- **Actor principal:** Comisario (A06 — Usuario Institucional, mando operativo). **Actores secundarios:** Oficial (A06, integrante de patrulla).
+- **Paquete:** P05. **OE/OT:** OE4/OT6. **Depto:** D07.
+- **Objetivo:** conformar patrullas asignando uno o más oficiales a una unidad/turno.
+- **Precondición:** oficiales activos y disponibles; sesión válida y permiso de mando (RBAC, CU-O05).
+- **Entradas:** identificación de la patrulla/unidad, turno/horario, oficiales seleccionados, zona/sector.
+- **Flujo principal:** 1) El Comisario crea o selecciona la patrulla. 2) Asigna los oficiales y el turno. 3) El sistema valida disponibilidad (sin doble asignación). 4) Persiste la conformación y registra auditoría (antes/después).
+- **Flujo alternativo:** FA1 oficial ya asignado a otra patrulla en el mismo turno → advertencia y confirmación. FA2 reasignación/relevo de un oficial.
+- **Excepciones:** EX1 oficial inactivo o sin disponibilidad → rechazo. EX2 permiso insuficiente → operación denegada y auditada.
+- **Salidas:** patrulla conformada con sus oficiales y turno; evento de auditoría `PATROL_ASSIGNED`.
+- **Reglas de negocio:** un oficial no puede estar en dos patrullas activas del mismo turno; toda asignación queda auditada.
+- **Criterio de aceptación:** Dada una patrulla y oficiales disponibles, Cuando el Comisario asigna, Entonces la patrulla queda conformada con su turno y responsable, sin solapes, y el cambio queda auditado.
+- **Dependencias:** P01 (RBAC/sesión), P03 (auditoría).
+- **Fuera de alcance:** geolocalización en tiempo real de las unidades.
+
+### CU-O78 — Despachar patrulla a incidente y gestionar su atención
+- **Actor principal:** Comisario (A06 — Usuario Institucional, mando operativo; asume el rol de Operador de Central de Despacho): evalúa, define prioridad, **despacha** y **supervisa el cierre**. **Actores secundarios:** Oficial (A06 — Usuario Institucional): **registra** el incidente, lo **recibe**, lo **atiende** y **reporta** (parte policial); Sistema (sugerencia de unidad disponible y registro de auditoría).
+- **Paquete:** P05. **OE/OT:** OE4/OT6. **Depto:** D07.
+- **Objetivo:** gestionar el ciclo completo de un incidente —registro, despacho, recepción, atención y cierre— bajo la regla "el Comisario despacha y supervisa; el Oficial recibe, atiende y reporta".
+- **Precondición:** existe el incidente/reporte; hay al menos una patrulla conformada con oficiales y disponible (CU-O77).
+- **Entradas:** incidente (tipo, ubicación, prioridad preliminar, descripción), prioridad definitiva, patrulla a despachar, resultado de la atención y parte policial.
+- **Flujo principal:** 1) El **Oficial u operador registra** el incidente (estado *Reportado*). 2) El **Comisario** revisa, **define la prioridad** y **asigna patrulla + oficiales** y despacha (estado *Despachado*; patrulla *Despachada*). 3) El **Oficial** recibe y acepta → *En camino*. 4) El **Oficial** llega → *En el lugar*, inicia atención → *En atención*; puede **solicitar apoyo**. 5) El **Oficial** registra el resultado y **genera el parte policial** → *Atendido*. 6) El **Comisario** revisa y **aprueba el cierre** (estado *Cerrado*; patrulla *Disponible*) **o devuelve** el caso para corrección (regresa a *En atención* con motivo).
+- **Flujo alternativo:** FA1 no hay patrullas disponibles → el incidente queda en cola hasta que el Comisario libere/conforme una. FA2 redespacho/reasignación por el Comisario. FA3 devolución para corrección antes del cierre.
+- **Excepciones:** EX1 patrulla no disponible o sin oficiales → rechazo. EX2 el Oficial intenta despachar o cerrar → operación denegada por RBAC y auditada. EX3 incidente inexistente → error.
+- **Salidas:** incidente trazable en todo su ciclo; eventos de auditoría `INCIDENT_REPORTED`, `PATROL_DISPATCHED`, `INCIDENT_STATUS_UPDATED`, `SUPPORT_REQUESTED`, `INCIDENT_RESOLVED`, `INCIDENT_CLOSED`, `INCIDENT_RETURNED` (con datos antes/después).
+- **Reglas de negocio:** **solo el Comisario despacha y aprueba el cierre**; el Oficial no puede despachar. Solo se despacha una patrulla *Disponible* con oficiales asignados. El cierre exige que el incidente esté *Atendido* con parte registrado. Cada transición queda auditada y es trazable hasta el incidente.
+- **Criterio de aceptación:** Dado un incidente reportado y una patrulla disponible, Cuando el Comisario la despacha y el Oficial la atiende y finaliza, Entonces el Comisario puede aprobar el cierre (o devolver), quedando todas las transiciones auditadas con responsable y hora.
+- **Dependencias:** CU-O77 (patrullas conformadas), P01 (RBAC/sesión), P03 (auditoría).
+- **Fuera de alcance:** seguimiento GPS en vivo y comunicaciones de radio; el registro de involucrados/evidencias se captura como texto en el resultado/parte (la integración profunda con P06/Involucrados es trabajo futuro).
 
 ---
 

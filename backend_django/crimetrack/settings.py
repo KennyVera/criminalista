@@ -155,6 +155,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "core.refresh_dashboard_summary",
         "schedule": 900.0,
     },
+    "run-scheduled-reports": {
+        "task": "core.run_scheduled_reports",
+        "schedule": 300.0,
+    },
 }
 
 # --- MinIO / analytics ---

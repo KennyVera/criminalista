@@ -152,6 +152,15 @@ def run_scheduled_backups_task() -> dict[str, Any]:
     return {"ejecutados": len(results), "resultados": results}
 
 
+@shared_task(name="core.run_scheduled_reports")
+def run_scheduled_reports_task() -> dict[str, Any]:
+    """Celery beat: envía por correo los reportes programados vencidos (CU-O38)."""
+    from packages.reporteria_exportacion.services.report_service import ReportService
+
+    results = ReportService().run_due_scheduled()
+    return {"ejecutados": len(results), "resultados": results}
+
+
 @shared_task(bind=True, name="core.run_etl_to_minio")
 def run_etl_to_minio_task(self, export_raw_copy: bool = True) -> dict[str, Any]:
     from core.etl.star_schema import run_etl_pb_to_minio

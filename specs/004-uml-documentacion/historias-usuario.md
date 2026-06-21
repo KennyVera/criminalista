@@ -1,7 +1,7 @@
 # Historias de Usuario — CrimeTrack Analytics Corp
 
-> 102 historias (10 estratégicas, 16 tácticas, 76 operativas; incluye **16 nuevas de auditoría**
-> HU-O-61…HU-O-76). Formato:
+> 105 historias (10 estratégicas, 16 tácticas, 79 operativas; incluye **16 nuevas de auditoría**
+> HU-O-61…HU-O-76 y **3 de operaciones de patrulla** HU-O-77, HU-O-78 y HU-O-78b). Formato:
 > **HU-[Nivel]-[Número]** — "Como [actor], quiero [necesidad], para [beneficio]".
 > Cada historia incluye: Código, Rol, Necesidad, Beneficio, Caso de uso, Paquete UML, Objetivo,
 > Criterios de aceptación y Prioridad. Subordinado a `000-sistema-general/` y a la constitución.
@@ -211,6 +211,26 @@ Convención de prioridad: **Alta** (crítica/seguridad/núcleo/demo), **Media** 
 
 ---
 
+## Historias Operativas — OPERACIONES DE PATRULLA (NUEVAS, HU-O-77…HU-O-78)
+
+> **Implementado adicional.** Extienden P05 hacia la coordinación de patrullas y despacho
+> (HU-O-77 ↔ CU-O77, HU-O-78 ↔ CU-O78). Regla principal: **el Comisario despacha y supervisa el
+> cierre; el Oficial registra, recibe, atiende y reporta** (el Oficial no despacha). Detalle del
+> criterio en `casos-uso.md`, sección "CASOS DE USO NUEVOS — OPERACIONES DE PATRULLA (P05)".
+
+| Código | Rol | Quiero (necesidad) | Para (beneficio) | CU | Paquete | Objetivo | Prioridad |
+|---|---|---|---|---|---|---|---|
+| HU-O-77 | Comisario | asignar oficiales a una patrulla y turno | organizar la cobertura operativa del territorio | CU-O77 | P05 | OE4 | Alta |
+| HU-O-78 | Comisario | evaluar, definir prioridad, despachar la patrulla y aprobar el cierre del incidente | atender los incidentes con la unidad adecuada y supervisar su resolución | CU-O78 | P05 | OE4 | Alta |
+| HU-O-78b | Oficial | registrar el incidente, aceptar el despacho, atenderlo, solicitar apoyo y generar el parte | resolver el incidente en terreno y dejar constancia para revisión del Comisario | CU-O78 | P05 | OE4 | Alta |
+
+**Criterios de aceptación (HU-O OPERACIONES DE PATRULLA):**
+- HU-O-77 — Dada una patrulla y oficiales disponibles, Cuando el Comisario los asigna, Entonces la patrulla queda conformada con su turno y responsable, sin solapes, y el cambio queda auditado.
+- HU-O-78 — Dado un incidente reportado y una patrulla disponible, Cuando el Comisario define prioridad y la despacha, Entonces la unidad queda vinculada al incidente ("Despachado") y, tras la atención del Oficial, el Comisario puede aprobar el cierre o devolver el caso, todo auditado.
+- HU-O-78b — Dado un incidente despachado a su patrulla, Cuando el Oficial lo acepta, atiende y finaliza con el parte, Entonces el incidente queda "Atendido" a la espera de la revisión del Comisario, y cada transición queda auditada.
+
+---
+
 ## Resumen de Historias
 
 | Nivel | Rango | Cantidad |
@@ -219,7 +239,8 @@ Convención de prioridad: **Alta** (crítica/seguridad/núcleo/demo), **Media** 
 | Tácticas | HU-T-01…HU-T-16 | 16 |
 | Operativas | HU-O-01…HU-O-60 | 60 |
 | Operativas — NIVEL AUDITORÍA (nuevas) | HU-O-61…HU-O-76 | 16 |
-| **Total** | | **102** |
+| Operativas — OPERACIONES DE PATRULLA (nuevas) | HU-O-77, HU-O-78, HU-O-78b | 3 |
+| **Total** | | **105** |
 
 Ninguna historia queda sin caso de uso ni sin objetivo (RD-02/RD-03). No se detectaron historias
 duplicadas; cualquier nueva se marcaría como "Implementado adicional".

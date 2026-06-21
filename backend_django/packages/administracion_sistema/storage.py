@@ -20,6 +20,7 @@ ADMIN_COLLECTIONS = [
     "sys_respaldos_historial",
     "sys_catalogo_delitos",
     "sys_zonas_geograficas",
+    "sys_reportes_programados",
 ]
 
 SCHEMAS: dict[str, list[str]] = {
@@ -79,6 +80,19 @@ SCHEMAS: dict[str, list[str]] = {
         "lon_centro",
         "activa",
     ],
+    "sys_reportes_programados": [
+        "id",
+        "nombre",
+        "tipo_reporte",
+        "destinatarios",
+        "frecuencia",
+        "hora_programada",
+        "activo",
+        "creado_por",
+        "creado_en",
+        "ultima_ejecucion",
+        "ultimo_estado",
+    ],
 }
 
 ID_COL = {
@@ -90,6 +104,7 @@ ID_COL = {
     "sys_respaldos_historial": "id",
     "sys_catalogo_delitos": "id",
     "sys_zonas_geograficas": "id",
+    "sys_reportes_programados": "id",
 }
 
 

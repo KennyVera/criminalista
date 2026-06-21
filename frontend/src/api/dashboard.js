@@ -20,4 +20,5 @@ export const dashboardApi = {
   mapaCalor: () => api.request(`${B}/mapa-calor/`),
   rankingDetectives: () => api.request(`${B}/ranking-detectives/`),
   indicadoresOperativos: () => api.request(`${B}/indicadores-operativos/`),
+  prediccion: (params) => api.request(`${B}/prediccion/${buildQuery(params)}`),
 }

@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from packages.autenticacion_seguridad.permissions import IsAdminJWT
 from packages.auditoria_trazabilidad.services.audit_query import AuditQueryService
+from packages.auditoria_trazabilidad.services.integrity_service import IntegrityService
 from packages.shared.audit import audit_request
 
 
@@ -69,3 +70,43 @@ class AuditExportView(APIView):
         response["Content-Disposition"] = f'attachment; filename="auditoria_{stamp}.csv"'
         response["Content-Length"] = str(len(csv_bytes))
         return response
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AuditIntegrityView(APIView):
+    """GET — CU-O75/O14: verifica la cadena de hashes de auditoría (solo Admin)."""
+
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request):
+        result = IntegrityService().verify_audit_chain()
+        audit_request(
+            request,
+            accion="INTEGRITY_VERIFIED" if result["ok"] else "INTEGRITY_ALERT",
+            tabla="app_audit_logs",
+            detalle=(
+                f"Verificación de integridad de auditoría: {result['mensaje']} "
+                f"({result['verificados']} verificados, {len(result['rupturas'])} rupturas)"
+            ),
+        )
+        return Response(result)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustodyIntegrityView(APIView):
+    """GET — CU-O15/O14: valida la cadena de custodia de las evidencias (solo Admin)."""
+
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request):
+        result = IntegrityService().verify_custody_chain()
+        audit_request(
+            request,
+            accion="INTEGRITY_VERIFIED" if result["ok"] else "INTEGRITY_ALERT",
+            tabla="app_evidencias",
+            detalle=(
+                f"Validación de cadena de custodia: {result['mensaje']} "
+                f"({result['verificadas']} verificadas, {len(result['alertas'])} alertas)"
+            ),
+        )
+        return Response(result)

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from packages.dashboard_analitica.views import (
+    DashboardCrimeForecastView,
     DashboardDetectiveRankingView,
     DashboardDirectAccessManifestView,
     DashboardDirectAccessPreviewView,
@@ -25,6 +26,11 @@ urlpatterns = [
         "indicadores-operativos/",
         DashboardOperationalIndicatorsView.as_view(),
         name="dashboard-indicadores-operativos",
+    ),
+    path(
+        "prediccion/",
+        DashboardCrimeForecastView.as_view(),
+        name="dashboard-prediccion",
     ),
     path(
         "direct-access/manifest/",

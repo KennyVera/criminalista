@@ -91,6 +91,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  authVerifyMfa: (email, code) =>
+    request('/packages/autenticacion/mfa/verificar/', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
+  authResendMfa: (email) =>
+    request('/packages/autenticacion/mfa/reenviar/', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
   authLogout: () =>
     request('/packages/autenticacion/logout/', { method: 'POST' }),
   authMe: () => request('/packages/autenticacion/me/'),

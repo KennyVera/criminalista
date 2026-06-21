@@ -238,6 +238,160 @@ class DashboardAnalyticsEngine(AnalyticsService):
         df = con.execute(sql).fetchdf()
         return df.to_dict(orient="records")
 
+    def crime_forecast(self, *, horizon: int = 6, history_months: int = 36, **filters) -> dict[str, Any]:
+        """CU-O20: pronóstico de incidencia criminal mensual.
+
+        Construye la serie temporal mensual (dim_tiempo) y proyecta `horizon` meses con
+        regresión lineal de tendencia + componente estacional mensual, devolviendo una
+        banda de confianza (±1.96·σ de los residuos).
+        """
+        con = self.connection()
+        fact = self._fact_parquet_source()
+        tiempo = self._dim_parquet("dim_tiempo")
+        joins, where = self._fact_filters_sql(
+            **{k: v for k, v in filters.items() if k in ("distrito", "tipo")}
+        )
+        if "dim_tiempo" not in joins:
+            joins += f"""
+            INNER JOIN read_parquet('{tiempo}') AS ti
+                ON CAST(f.fk_tiempo AS BIGINT) = CAST(ti.id AS BIGINT)
+            """
+        sql = f"""
+            SELECT CAST(ti.year AS INTEGER) AS y, CAST(ti.month AS INTEGER) AS m,
+                   COUNT(*)::BIGINT AS value
+            FROM read_parquet('{fact}') AS f
+            {joins}
+            {where}
+            {'AND' if where else 'WHERE'} ti.year IS NOT NULL AND ti.month IS NOT NULL
+            GROUP BY y, m
+            ORDER BY y, m
+        """
+        rows = con.execute(sql).fetchall()
+        serie = [(int(y), int(m), int(v)) for (y, m, v) in rows if y and m]
+        return self._build_forecast(serie, horizon=horizon, history_months=history_months)
+
+    @staticmethod
+    def _month_label(year: int, month: int) -> str:
+        nombres = [
+            "", "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+            "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+        ]
+        mn = nombres[month] if 1 <= month <= 12 else str(month)
+        return f"{mn} {year}"
+
+    @classmethod
+    def _build_forecast(
+        cls, serie: list[tuple[int, int, int]], *, horizon: int, history_months: int
+    ) -> dict[str, Any]:
+        import math
+
+        if len(serie) < 6:
+            return {
+                "disponible": False,
+                "motivo": "Datos insuficientes para predecir (se requieren al menos 6 meses).",
+                "historico": [
+                    {"periodo": f"{y:04d}-{m:02d}", "label": cls._month_label(y, m), "valor": v}
+                    for (y, m, v) in serie
+                ],
+                "prediccion": [],
+            }
+
+        serie = serie[-history_months:]
+        n = len(serie)
+        xs = list(range(n))
+        ys = [float(v) for (_, _, v) in serie]
+
+        # Regresión lineal (mínimos cuadrados): y = a + b·x
+        mean_x = sum(xs) / n
+        mean_y = sum(ys) / n
+        sxx = sum((x - mean_x) ** 2 for x in xs) or 1.0
+        sxy = sum((xs[i] - mean_x) * (ys[i] - mean_y) for i in range(n))
+        b = sxy / sxx
+        a = mean_y - b * mean_x
+
+        # Componente estacional: desviación media por mes calendario respecto a la tendencia.
+        resid_by_month: dict[int, list[float]] = {}
+        residuals: list[float] = []
+        for i, (_, m, _) in enumerate(serie):
+            trend = a + b * xs[i]
+            r = ys[i] - trend
+            residuals.append(r)
+            resid_by_month.setdefault(m, []).append(r)
+        seasonal = {
+            m: (sum(v) / len(v)) if v else 0.0 for m, v in resid_by_month.items()
+        }
+
+        # Desviación estándar de los residuos sin estacionalidad → banda de confianza.
+        deseason = [
+            residuals[i] - seasonal.get(serie[i][1], 0.0) for i in range(n)
+        ]
+        if n > 2:
+            var = sum(r * r for r in deseason) / (n - 2)
+        else:
+            var = 0.0
+        sigma = math.sqrt(max(var, 0.0))
+        band = 1.96 * sigma
+
+        # Coeficiente de determinación R².
+        ss_tot = sum((y - mean_y) ** 2 for y in ys) or 1.0
+        ss_res = sum(
+            (ys[i] - (a + b * xs[i] + seasonal.get(serie[i][1], 0.0))) ** 2 for i in range(n)
+        )
+        r2 = max(0.0, min(1.0, 1 - ss_res / ss_tot))
+
+        last_y, last_m, _ = serie[-1]
+        prediccion = []
+        for h in range(1, horizon + 1):
+            idx = n - 1 + h
+            ym = last_m + h
+            yy = last_y + (ym - 1) // 12
+            mm = ((ym - 1) % 12) + 1
+            val = a + b * idx + seasonal.get(mm, 0.0)
+            val = max(0.0, val)
+            prediccion.append(
+                {
+                    "periodo": f"{yy:04d}-{mm:02d}",
+                    "label": cls._month_label(yy, mm),
+                    "valor": round(val),
+                    "min": round(max(0.0, val - band)),
+                    "max": round(val + band),
+                }
+            )
+
+        historico = [
+            {"periodo": f"{y:04d}-{m:02d}", "label": cls._month_label(y, m), "valor": v}
+            for (y, m, v) in serie
+        ]
+        prom = round(mean_y, 1)
+        prom_pred = round(sum(p["valor"] for p in prediccion) / len(prediccion), 1) if prediccion else 0
+        variacion = round(((prom_pred - prom) / prom * 100) if prom else 0.0, 1)
+        if b > 0.5:
+            tendencia = "creciente"
+        elif b < -0.5:
+            tendencia = "decreciente"
+        else:
+            tendencia = "estable"
+
+        return {
+            "disponible": True,
+            "historico": historico,
+            "prediccion": prediccion,
+            "modelo": {
+                "tipo": "Regresión lineal + estacionalidad mensual",
+                "meses_historicos": n,
+                "horizonte_meses": horizon,
+                "r2": round(r2, 3),
+                "confianza": "95%",
+                "pendiente_mensual": round(b, 2),
+            },
+            "resumen": {
+                "tendencia": tendencia,
+                "promedio_mensual_historico": prom,
+                "promedio_mensual_pronosticado": prom_pred,
+                "variacion_pct": variacion,
+            },
+        }
+
     def heat_map_by_district(self, *, limit: int = 15, **filters) -> list[dict[str, Any]]:
         data = self.crimes_by_district(limit=limit)
         items = data.get("items", [])
