@@ -337,6 +337,9 @@ class PatrullaService:
             "fecha_despacho": "",
             "fecha_atendido": "",
             "fecha_cierre": "",
+            "fk_expediente": "",
+            "expediente_case_number": "",
+            "fecha_vinculacion": "",
         }
         created = self.tx.append_row("app_incidentes", row)
         return _json_safe(created)

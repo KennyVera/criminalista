@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, Navigate } from 'react-router-dom'
-import { ArrowLeft, FileText, AlertCircle } from 'lucide-react'
+import { ArrowLeft, FileText, AlertCircle, Link2, MapPin } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { expedientesApi } from '../../api/expedientes'
 import ExpedienteTabs from '../../components/expediente/ExpedienteTabs'
@@ -9,7 +9,15 @@ import TabInvolucrados from './tabs/TabInvolucrados'
 import TabEvidencias from './tabs/TabEvidencias'
 import TabBitacora from './tabs/TabBitacora'
 import { Spinner, Badge } from '../../components/ui'
-import { canViewInvestigacionProgress } from '../../utils/roles'
+import { canViewInvestigacionProgress, isOficial } from '../../utils/roles'
+
+const ESTADO_EXP_TONE = {
+  ACTIVO: 'green',
+  REABIERTO: 'blue',
+  CERRADO: 'warning',
+  ARCHIVADO: 'neutral',
+  ELIMINADO: 'danger',
+}
 
 export default function ExpedienteDetailPage() {
   const { numeroCaso } = useParams()
@@ -19,8 +27,17 @@ export default function ExpedienteDetailPage() {
   const [cabecera, setCabecera] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [incidentes, setIncidentes] = useState([])
 
-  const allowed = canViewInvestigacionProgress(user)
+  // El Oficial puede abrir el detalle de los expedientes que registró
+  // (el backend valida que sea el creador).
+  const oficial = isOficial(user)
+  const allowed = canViewInvestigacionProgress(user) || oficial
+  // El Oficial hace el registro inicial (involucrados/evidencias preliminares)
+  // pero NO registra avances de investigación (bitácora).
+  const visibleTabs = oficial
+    ? ['general', 'involucrados', 'evidencias']
+    : ['general', 'involucrados', 'evidencias', 'bitacora']
 
   useEffect(() => {
     if (!allowed || !caseNumber) return
@@ -28,13 +45,23 @@ export default function ExpedienteDetailPage() {
     expedientesApi
       .cabecera(caseNumber)
       .then(setCabecera)
-      .catch((e) => setError(e.message))
+      .catch((e) =>
+        setError(
+          e.status === 403
+            ? 'Acceso restringido: solo puede consultar y trabajar en los expedientes que el comisario le ha asignado.'
+            : e.message,
+        ),
+      )
       .finally(() => setLoading(false))
+    expedientesApi
+      .incidentesVinculados(caseNumber)
+      .then((res) => setIncidentes(res.items || []))
+      .catch(() => setIncidentes([]))
   }, [caseNumber, allowed])
 
   if (!allowed) return <Navigate to="/" replace />
 
-  if (!caseNumber) return <Navigate to="/investigaciones/progreso" replace />
+  if (!caseNumber) return <Navigate to="/expedientes" replace />
 
   return (
     <section className="mx-auto max-w-6xl space-y-6">
@@ -42,7 +69,7 @@ export default function ExpedienteDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link
-              to="/investigaciones/progreso"
+              to="/expedientes"
               className="mb-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -54,8 +81,21 @@ export default function ExpedienteDetailPage() {
               </span>
               Expediente {caseNumber}
             </h2>
+            {cabecera?.expediente?.titulo && (
+              <p className="mt-1 text-sm font-medium text-slate-600">
+                {cabecera.expediente.titulo}
+              </p>
+            )}
             {cabecera && (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                {cabecera.expediente?.estado && (
+                  <>
+                    <Badge tone={ESTADO_EXP_TONE[cabecera.expediente.estado] || 'neutral'}>
+                      {cabecera.expediente.estado}
+                    </Badge>
+                    <span>·</span>
+                  </>
+                )}
                 <span className="status-badge status-badge--neutral">
                   {cabecera.estado_caso || 'Sin estado'}
                 </span>
@@ -76,6 +116,38 @@ export default function ExpedienteDetailPage() {
         </div>
       </div>
 
+      {incidentes.length > 0 && (
+        <div className="glass-card rounded-xl p-5">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Link2 className="h-4 w-4 text-indigo-600" />
+            Incidentes vinculados
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-600">
+              {incidentes.length}
+            </span>
+          </h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {incidentes.map((inc) => (
+              <div
+                key={inc.id_incidente}
+                className="rounded-lg border border-slate-200 bg-white/70 p-3 text-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-semibold text-indigo-700">{inc.codigo}</span>
+                  <Badge tone="neutral">{inc.estado}</Badge>
+                </div>
+                <p className="mt-1 font-medium text-slate-700">
+                  {inc.tipo} · {inc.prioridad}
+                </p>
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                  <MapPin className="h-3 w-3" />
+                  {(inc.fecha_reporte || '').slice(0, 10)} — {inc.ubicacion || 's/ubicación'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-20">
           <Spinner />
@@ -86,11 +158,11 @@ export default function ExpedienteDetailPage() {
           <p>{error}</p>
         </div>
       ) : (
-        <ExpedienteTabs active={tab} onChange={setTab}>
+        <ExpedienteTabs active={tab} onChange={setTab} tabs={visibleTabs}>
           {tab === 'general' && <TabDetallesGenerales caseNumber={caseNumber} />}
           {tab === 'involucrados' && <TabInvolucrados caseNumber={caseNumber} />}
           {tab === 'evidencias' && <TabEvidencias caseNumber={caseNumber} />}
-          {tab === 'bitacora' && (
+          {!oficial && tab === 'bitacora' && (
             <TabBitacora
               caseNumber={caseNumber}
               avanceInicial={cabecera?.avance_pct ?? 0}

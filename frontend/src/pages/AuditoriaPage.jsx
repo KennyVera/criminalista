@@ -37,6 +37,7 @@ const EMPTY_FILTERS = {
   operacion: '',
   severidad: '',
   resultado: '',
+  rol: '',
   ip: '',
   desde: '',
   hasta: '',
@@ -84,6 +85,7 @@ export default function AuditoriaPage() {
     stats: {},
     acciones: [],
     categorias: [],
+    roles: [],
   })
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -356,7 +358,19 @@ export default function AuditoriaPage() {
           )}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+          <Select
+            value={filters.rol}
+            onChange={(e) => setFilter('rol', e.target.value)}
+            aria-label="Filtrar por tipo de actor"
+          >
+            <option value="">Todo actor (rol)</option>
+            {(data.roles || []).map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </Select>
           <Select
             value={filters.accion}
             onChange={(e) => setFilter('accion', e.target.value)}

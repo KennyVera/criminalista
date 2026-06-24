@@ -1,16 +1,72 @@
 from django.urls import path
 
 from packages.expedientes_criminales.views import (
+    ExpedienteArchivarView,
     ExpedienteBitacoraView,
     ExpedienteCabeceraView,
+    ExpedienteCatalogosView,
+    ExpedienteCerrarView,
     ExpedienteCierreRequisitosView,
     ExpedienteDetallesGeneralesView,
+    ExpedienteDuplicadosView,
+    ExpedienteEditarView,
+    ExpedienteEliminarView,
     ExpedienteEvidenciasView,
+    ExpedienteIncidentesView,
     ExpedienteInformePdfView,
     ExpedienteInvolucradosView,
+    ExpedienteReabrirView,
+    ExpedientesListView,
+    IncidentesDisponiblesView,
 )
 
 urlpatterns = [
+    # Rutas específicas ANTES del catch-all "<str:case_number>/".
+    path(
+        "",
+        ExpedientesListView.as_view(),
+        name="expedientes-list",
+    ),
+    path(
+        "catalogos/",
+        ExpedienteCatalogosView.as_view(),
+        name="expediente-catalogos",
+    ),
+    path(
+        "duplicados/",
+        ExpedienteDuplicadosView.as_view(),
+        name="expediente-duplicados",
+    ),
+    path(
+        "incidentes-disponibles/",
+        IncidentesDisponiblesView.as_view(),
+        name="incidentes-disponibles",
+    ),
+    path(
+        "<str:case_number>/editar/",
+        ExpedienteEditarView.as_view(),
+        name="expediente-editar",
+    ),
+    path(
+        "<str:case_number>/cerrar/",
+        ExpedienteCerrarView.as_view(),
+        name="expediente-cerrar",
+    ),
+    path(
+        "<str:case_number>/reabrir/",
+        ExpedienteReabrirView.as_view(),
+        name="expediente-reabrir",
+    ),
+    path(
+        "<str:case_number>/archivar/",
+        ExpedienteArchivarView.as_view(),
+        name="expediente-archivar",
+    ),
+    path(
+        "<str:case_number>/eliminar/",
+        ExpedienteEliminarView.as_view(),
+        name="expediente-eliminar",
+    ),
     path(
         "<str:case_number>/",
         ExpedienteCabeceraView.as_view(),
@@ -20,6 +76,11 @@ urlpatterns = [
         "<str:case_number>/detalles-generales/",
         ExpedienteDetallesGeneralesView.as_view(),
         name="expediente-detalles",
+    ),
+    path(
+        "<str:case_number>/incidentes/",
+        ExpedienteIncidentesView.as_view(),
+        name="expediente-incidentes",
     ),
     path(
         "<str:case_number>/involucrados/",

@@ -7,14 +7,17 @@ const TABS = [
   { id: 'bitacora', label: 'Bitácora y progreso', icon: ClipboardList },
 ]
 
-export default function ExpedienteTabs({ active, onChange, children }) {
+export default function ExpedienteTabs({ active, onChange, children, tabs }) {
+  const visibleTabs = tabs
+    ? TABS.filter((t) => tabs.includes(t.id))
+    : TABS
   return (
     <div className="space-y-6">
       <div
         className="flex flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-slate-100/60 p-1.5 shadow-inner"
         role="tablist"
       >
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon
           const isActive = active === tab.id
           return (

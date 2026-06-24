@@ -23,6 +23,7 @@ def _filters(request) -> dict:
         "operacion": qp.get("operacion", ""),
         "severidad": qp.get("severidad", ""),
         "resultado": qp.get("resultado", ""),
+        "rol": qp.get("rol", ""),
         "ip": qp.get("ip", ""),
         "fk_usuario": qp.get("fk_usuario", ""),
         "desde": qp.get("desde", ""),

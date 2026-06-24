@@ -291,6 +291,12 @@ export default function DespachoPage() {
                           Apoyo solicitado
                         </Badge>
                       )}
+                      {inc.expediente_case_number && (
+                        <Badge tone="info">
+                          <FileText className="mr-1 inline h-3 w-3" />
+                          Expediente {inc.expediente_case_number}
+                        </Badge>
+                      )}
                     </div>
                     <p className="mt-1.5 font-medium text-slate-800">{inc.tipo}</p>
                     <div className="mt-0.5 flex items-center gap-1 text-sm text-slate-600">

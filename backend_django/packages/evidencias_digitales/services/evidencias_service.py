@@ -10,6 +10,7 @@ Implementa:
 from __future__ import annotations
 
 import hashlib
+import mimetypes
 import os
 import uuid
 from typing import Any
@@ -38,6 +39,10 @@ TRANSICIONES: dict[str, tuple[str, ...]] = {
     "Liberada": ("En custodia",),
     "Destruida": (),  # estado terminal
 }
+
+# Estados en los que la evidencia está activa en un proceso forense y NO debe
+# eliminarse hasta que sea devuelta a custodia (validación previa al borrado).
+ESTADOS_NO_ELIMINABLES = ("En análisis", "Transferida")
 
 
 def _json_safe(value: Any) -> Any:
@@ -135,6 +140,69 @@ class EvidenciasService:
             "fk_usuario_custodia": int(user["id_usuario"]),
         }
         return _json_safe(self.tx.append_row("app_evidencias", row))
+
+    # ── Acceso al objeto en MinIO ──
+    def _parse_key(self, minio_url: str) -> tuple[str, str]:
+        """Extrae (bucket, key) de una URL s3://bucket/key."""
+        raw = str(minio_url or "")
+        if raw.startswith("s3://"):
+            raw = raw[len("s3://") :]
+        parts = raw.split("/", 1)
+        if len(parts) != 2 or not parts[1]:
+            raise ValueError("Ruta de objeto inválida para la evidencia.")
+        return parts[0], parts[1]
+
+    def resolve_case_number(self, fk_caso: Any) -> str:
+        try:
+            dim = self.olap.get_record("dim_caso", str(int(fk_caso)))
+        except Exception:
+            dim = None
+        return str((dim or {}).get("case_number") or "")
+
+    def download(self, id_evidencia: int) -> dict[str, Any]:
+        """Descarga el archivo de la evidencia desde MinIO (CU: Descargar/Reproducir)."""
+        ev = self.get(id_evidencia)
+        if not ev:
+            raise ValueError("Evidencia no encontrada")
+        bucket, key = self._parse_key(ev.get("minio_url"))
+        resp = self.olap._client.get_object(Bucket=bucket, Key=key)
+        body = resp["Body"].read()
+        filename = str(ev.get("nombre_archivo") or key.rsplit("/", 1)[-1] or "evidencia")
+        content_type = (
+            resp.get("ContentType")
+            or mimetypes.guess_type(filename)[0]
+            or "application/octet-stream"
+        )
+        return {"body": body, "content_type": content_type, "filename": filename}
+
+    def delete(self, id_evidencia: int, *, user: dict[str, Any]) -> dict[str, Any]:
+        """Elimina la evidencia (solo Comisario) validando el estado de custodia."""
+        df = self.tx.read_table("app_evidencias")
+        if df.empty:
+            raise ValueError("Evidencia no encontrada")
+        mask = df["id_evidencia"].astype(int) == int(id_evidencia)
+        if not mask.any():
+            raise ValueError("Evidencia no encontrada")
+        ev = _json_safe(df[mask].iloc[0].to_dict())
+
+        # Validar estado de custodia antes de eliminar (CU: Validar estado de custodia).
+        estado = str(ev.get("estado_custodia") or "")
+        if estado in ESTADOS_NO_ELIMINABLES:
+            raise ValueError(
+                f"No se puede eliminar una evidencia en estado «{estado}». "
+                "Devuélvala a custodia antes de eliminarla."
+            )
+
+        # Borrado físico del objeto en MinIO (best-effort).
+        try:
+            bucket, key = self._parse_key(ev.get("minio_url"))
+            self.olap._client.delete_object(Bucket=bucket, Key=key)
+        except Exception:
+            pass
+
+        df = df[~mask]
+        self.tx.write_table("app_evidencias", df)
+        return ev
 
     # ── Cadena de custodia (CU-O29) ──
     @staticmethod

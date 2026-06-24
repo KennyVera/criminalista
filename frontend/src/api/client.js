@@ -60,6 +60,20 @@ async function uploadForm(path, formData) {
   return data
 }
 
+async function fetchBlob(path) {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    const err = new Error(data.detail || data.error || res.statusText)
+    err.status = res.status
+    throw err
+  }
+  const blob = await res.blob()
+  return { blob, contentType: res.headers.get('Content-Type') || blob.type }
+}
+
 async function downloadFile(path, filename) {
   const res = await fetch(`${BASE}${path}`, {
     headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
@@ -82,6 +96,7 @@ async function downloadFile(path, filename) {
 export const api = {
   request,
   downloadFile,
+  fetchBlob,
   uploadForm,
   setAuthToken: (token) => {
     authToken = token

@@ -61,3 +61,27 @@ export function canDespachar(user) {
   const r = normalizeRole(user)
   return r === 'comisario' || r === 'admin'
 }
+
+// Gestión de Expedientes Criminales (P05).
+export function canViewExpedientes(user) {
+  const r = normalizeRole(user)
+  return r === 'oficial' || r === 'detective' || r === 'comisario' || r === 'admin'
+}
+
+// El Oficial registra; Comisario y Admin también pueden.
+export function canRegisterExpediente(user) {
+  const r = normalizeRole(user)
+  return r === 'oficial' || r === 'comisario' || r === 'admin'
+}
+
+// Editar / cerrar (Detective asignado, Comisario, Admin).
+export function canEditExpediente(user) {
+  const r = normalizeRole(user)
+  return r === 'detective' || r === 'comisario' || r === 'admin'
+}
+
+// Reabrir, archivar y autorizar eliminación lógica: solo Comisario/Admin.
+export function canManageExpedienteLifecycle(user) {
+  const r = normalizeRole(user)
+  return r === 'comisario' || r === 'admin'
+}

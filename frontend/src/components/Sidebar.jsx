@@ -14,13 +14,13 @@ import {
   Activity,
   UserCheck,
   ClipboardList,
-  Briefcase,
   ShieldCheck,
   Table2,
   Database,
   Shield,
   Sparkles,
   FileText,
+  FolderOpen,
   Radio,
   Navigation,
 } from 'lucide-react'
@@ -37,6 +37,7 @@ import {
   canViewOperationalIndicators,
   canManagePatrullas,
   canDespachar,
+  canViewExpedientes,
   isOficial,
 } from '../utils/roles'
 
@@ -76,6 +77,7 @@ export default function Sidebar({
   const showDespacho = canDespachar(user)
   const showMisPatrullas = isOficial(user)
   const showOperaciones = showPatrullas || showDespacho || showMisPatrullas
+  const showExpedientes = canViewExpedientes(user)
   const [invOpen, setInvOpen] = useState(false)
   const [opsOpen, setOpsOpen] = useState(false)
   const [tablesOpen, setTablesOpen] = useState(false)
@@ -142,7 +144,7 @@ export default function Sidebar({
           </NavLink>
         )}
 
-        {(showAsignaciones || showProgreso) && (
+        {(showAsignaciones || showProgreso || showExpedientes) && (
           <NavSection
             title="Investigaciones"
             open={invOpen}
@@ -165,11 +167,11 @@ export default function Sidebar({
                 </NavLink>
               </li>
             )}
-            {showProgreso && (
+            {showExpedientes && (
               <li>
-                <NavLink to="/tabla/dim_caso" className={linkClass}>
-                  <Briefcase className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
-                  {!collapsed && <span className="truncate">Casos</span>}
+                <NavLink to="/expedientes" className={linkClass}>
+                  <FolderOpen className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {!collapsed && <span className="truncate">Expedientes</span>}
                 </NavLink>
               </li>
             )}

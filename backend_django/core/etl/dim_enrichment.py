@@ -50,7 +50,11 @@ def _add_legacy_id(df: pd.DataFrame) -> pd.DataFrame:
 def enrich_dim_tiempo(df: pd.DataFrame) -> pd.DataFrame:
     df = _add_legacy_id(df.copy())
     parsed = _parse_datetime(df["date"])
-    df["year"] = parsed.dt.year.fillna(df.get("year")).astype("Int64").astype(str)
+    df["year"] = (
+        parsed.dt.year.fillna(pd.to_numeric(df.get("year"), errors="coerce"))
+        .astype("Int64")
+        .astype(str)
+    )
     df["month"] = parsed.dt.month
     df["day"] = parsed.dt.day
     df["hour"] = parsed.dt.hour

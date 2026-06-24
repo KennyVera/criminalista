@@ -37,6 +37,12 @@ ACTION_META: dict[str, dict[str, str]] = {
     "EVIDENCE_UPLOADED": {"label": "Evidencia cargada", "categoria": "Evidencias", "severidad": "medio", "resultado": "exito"},
     "EVIDENCE_CUSTODY_CHANGED": {"label": "Cambio de custodia de evidencia", "categoria": "Evidencias", "severidad": "medio", "resultado": "exito"},
     "CASE_UPDATED": {"label": "Actualización de expediente", "categoria": "Expedientes", "severidad": "info", "resultado": "exito"},
+    "EXPEDIENTE_CREATED": {"label": "Expediente registrado", "categoria": "Expedientes", "severidad": "info", "resultado": "exito"},
+    "EXPEDIENTE_UPDATED": {"label": "Expediente editado", "categoria": "Expedientes", "severidad": "info", "resultado": "exito"},
+    "EXPEDIENTE_CLOSED": {"label": "Expediente cerrado", "categoria": "Expedientes", "severidad": "medio", "resultado": "exito"},
+    "EXPEDIENTE_REOPENED": {"label": "Expediente reabierto", "categoria": "Expedientes", "severidad": "medio", "resultado": "exito"},
+    "EXPEDIENTE_ARCHIVED": {"label": "Expediente archivado", "categoria": "Expedientes", "severidad": "medio", "resultado": "exito"},
+    "EXPEDIENTE_DELETED": {"label": "Expediente eliminado (lógico)", "categoria": "Expedientes", "severidad": "alto", "resultado": "exito"},
     "CASE_PDF_EXPORTED": {"label": "Informe PDF exportado", "categoria": "Exportación", "severidad": "medio", "resultado": "exito"},
     "REPORT_SENT": {"label": "Reporte enviado por correo", "categoria": "Reportes", "severidad": "medio", "resultado": "exito"},
     "REPORT_SCHEDULE_CREATED": {"label": "Reporte programado", "categoria": "Reportes", "severidad": "info", "resultado": "exito"},
@@ -107,6 +113,7 @@ OPERACION_BY_ACTION: dict[str, str] = {
     "ZONE_CREATED": "creacion",
     "INVOLUCRADO_ADDED": "creacion",
     "EVIDENCE_UPLOADED": "creacion",
+    "EXPEDIENTE_CREATED": "creacion",
     "EVIDENCE_CUSTODY_CHANGED": "modificacion",
     "ASIGNAR_DETECTIVE": "creacion",
     "SEED_AUTH": "creacion",
@@ -119,7 +126,12 @@ OPERACION_BY_ACTION: dict[str, str] = {
     "CATALOG_UPDATED": "modificacion",
     "ZONE_UPDATED": "modificacion",
     "CASE_UPDATED": "modificacion",
+    "EXPEDIENTE_UPDATED": "modificacion",
+    "EXPEDIENTE_CLOSED": "modificacion",
+    "EXPEDIENTE_REOPENED": "modificacion",
+    "EXPEDIENTE_ARCHIVED": "modificacion",
     "BACKUP_RESTORE": "modificacion",
+    "EXPEDIENTE_DELETED": "eliminacion",
     "USER_DELETED": "eliminacion",
     "CATALOG_DELETED": "eliminacion",
     "ZONE_DELETED": "eliminacion",
@@ -293,6 +305,7 @@ class AuditQueryService:
         operacion = str(f.get("operacion") or "").strip()
         severidad = str(f.get("severidad") or "").strip()
         resultado = str(f.get("resultado") or "").strip()
+        rol = str(f.get("rol") or "").strip().lower()
         ip = str(f.get("ip") or "").strip()
         desde = str(f.get("desde") or "").strip()
         hasta = str(f.get("hasta") or "").strip()
@@ -303,6 +316,12 @@ class AuditQueryService:
                 return False
             if categoria and e["categoria"] != categoria:
                 return False
+            if rol:
+                if rol == "sistema":
+                    if e["fk_usuario"] is not None and str(e["rol"]).strip():
+                        return False
+                elif str(e["rol"]).strip().lower() != rol:
+                    return False
             if operacion and e["operacion"] != operacion:
                 return False
             if severidad and e["severidad"] != severidad:
@@ -376,6 +395,10 @@ class AuditQueryService:
         # Catálogos para los filtros (sobre TODO el dataset, no el filtrado).
         acciones = sorted({(e["accion"], e["accion_label"]) for e in all_events})
         categorias = sorted({e["categoria"] for e in all_events})
+        roles = sorted({str(e["rol"]).strip() for e in all_events if str(e["rol"]).strip()})
+        hay_sistema = any(e["fk_usuario"] is None or not str(e["rol"]).strip() for e in all_events)
+        if hay_sistema:
+            roles.append("Sistema")
         return {
             "items": page_items,
             "total": total,
@@ -385,6 +408,7 @@ class AuditQueryService:
             "stats": self._stats(filtered),
             "acciones": [{"value": a, "label": lbl} for a, lbl in acciones],
             "categorias": categorias,
+            "roles": roles,
         }
 
     def backfill_session_close_targets(self) -> dict[str, int]:

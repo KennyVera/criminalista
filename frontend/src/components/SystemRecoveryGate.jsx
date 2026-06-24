@@ -14,6 +14,7 @@ import GenerateDataPage from '../pages/GenerateDataPage'
 import AsignarDetectivePage from '../pages/investigaciones/AsignarDetectivePage'
 import ProgresoInvestigacionPage from '../pages/investigaciones/ProgresoInvestigacionPage'
 import ExpedienteDetailPage from '../pages/expedientes/ExpedienteDetailPage'
+import ExpedientesListPage from '../pages/expedientes/ExpedientesListPage'
 import ActiveSessionsPage from '../pages/ActiveSessionsPage'
 import AuditoriaPage from '../pages/AuditoriaPage'
 import PrediccionPage from '../pages/PrediccionPage'
@@ -55,6 +56,7 @@ function NormalAppRoutes() {
         <Route path="operaciones/patrullas" element={<PatrullasPage />} />
         <Route path="operaciones/despacho" element={<DespachoPage />} />
         <Route path="operaciones/mis-patrullas" element={<MisPatrullasPage />} />
+        <Route path="expedientes" element={<ExpedientesListPage />} />
         <Route path="expedientes/:numeroCaso" element={<ExpedienteDetailPage />} />
         <Route path="seguridad/sesiones-activas" element={<ActiveSessionsPage />} />
         <Route path="seguridad/auditoria" element={<AuditoriaPage />} />

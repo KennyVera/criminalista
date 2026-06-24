@@ -18,7 +18,12 @@ from packages.shared.minio_transactional import TransactionalMinioStore, utc_now
 ESTADO_ACTIVA = "Activa"
 ESTADO_REASIGNADA = "Reasignada"
 ESTADO_REMOVIDA = "Removida"
-MAX_CASOS_RECOMENDADOS = 15
+# Máximo de casos activos simultáneos por detective (garantiza calidad de la
+# investigación). En la práctica se maneja entre 5 y 8 casos; aquí el tope es 8.
+MAX_CASOS_RECOMENDADOS = 8
+# Umbral de carga baja: hasta 3 casos activos el detective se considera
+# disponible/recomendado para recibir nuevas asignaciones.
+UMBRAL_DISPONIBLE = 3
 
 
 class AssignmentService:
@@ -77,6 +82,13 @@ class AssignmentService:
         for row in detectives.to_dict(orient="records"):
             uid = int(row["id_usuario"])
             casos = counts.get(uid, 0)
+            activa = str(row["estado_cuenta"]).lower() == "activa"
+            if casos <= UMBRAL_DISPONIBLE:
+                nivel = "baja"
+            elif casos < MAX_CASOS_RECOMENDADOS:
+                nivel = "media"
+            else:
+                nivel = "alta"
             items.append(
                 {
                     "id_usuario": uid,
@@ -86,9 +98,13 @@ class AssignmentService:
                     "numero_placa": row["numero_placa"],
                     "estado_cuenta": row["estado_cuenta"],
                     "casos_activos": casos,
+                    "max_casos": MAX_CASOS_RECOMENDADOS,
                     "carga_pct": min(100, round(100 * casos / MAX_CASOS_RECOMENDADOS)),
-                    "disponible": casos < MAX_CASOS_RECOMENDADOS
-                    and str(row["estado_cuenta"]).lower() == "activa",
+                    # Puede recibir más casos (no llegó al tope de 8).
+                    "disponible": casos < MAX_CASOS_RECOMENDADOS and activa,
+                    # Carga baja (≤3 casos): ideal para asignar.
+                    "recomendado": casos <= UMBRAL_DISPONIBLE and activa,
+                    "carga_nivel": nivel,
                     "etiqueta": self._detective_label(row),
                 }
             )
@@ -249,10 +265,23 @@ class AssignmentService:
 
         workload = self.list_detectives_workload()
         det_info = next((d for d in workload if d["id_usuario"] == fk_detective), None)
-        if det_info and not det_info["disponible"]:
+        # Al reasignar el mismo caso a un detective al tope no debe contar doble:
+        # solo bloquea cuando realmente sumaría un caso nuevo.
+        ya_asignado = False
+        active = self._active_assignments()
+        if not active.empty:
+            ya_asignado = bool(
+                (
+                    (active["fk_caso"].astype(int) == int(fk_caso))
+                    & (active["fk_detective"].astype(int) == int(fk_detective))
+                ).any()
+            )
+        if det_info and not det_info["disponible"] and not ya_asignado:
             raise ValueError(
-                f"El detective tiene {det_info['casos_activos']} casos activos "
-                f"(máximo recomendado {MAX_CASOS_RECOMENDADOS})"
+                f"El detective {det_info['etiqueta']} ya tiene "
+                f"{det_info['casos_activos']} casos activos y alcanzó el máximo "
+                f"de {MAX_CASOS_RECOMENDADOS}. Asigne el caso a otro detective "
+                f"o libere carga primero."
             )
 
         self._cerrar_asignacion_activa(
@@ -394,6 +423,7 @@ class AssignmentService:
                     "id_asignacion": int(asig["id_asignacion"]),
                     "fk_caso": int(asig["fk_caso"]),
                     "case_number": asig.get("case_number"),
+                    "fk_detective": int(asig["fk_detective"]),
                     "detective_nombre": asig.get("detective_nombre"),
                     "detective_placa": asig.get("detective_placa"),
                     "fecha_asignacion": asig.get("fecha_asignacion"),

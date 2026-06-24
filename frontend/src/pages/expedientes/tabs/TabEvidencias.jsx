@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Upload, Fingerprint, FileArchive, ShieldCheck, Hash } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Upload,
+  Fingerprint,
+  FileArchive,
+  ShieldCheck,
+  Hash,
+  Download,
+  Play,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { expedientesApi } from '../../../api/expedientes'
 import { evidenciasApi } from '../../../api/evidencias'
 import { Button, Card, Spinner } from '../../../components/ui'
 import { useToast } from '../../../context/ToastContext'
+import { useAuth } from '../../../context/AuthContext'
+import { isAdmin, isComisario } from '../../../utils/roles'
 
 const CUSTODY_BADGE = {
   'En custodia': 'status-badge--active',
@@ -13,16 +25,43 @@ const CUSTODY_BADGE = {
   Destruida: 'status-badge--danger',
 }
 
+const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
+const VIDEO_EXT = ['mp4', 'webm', 'mov', 'ogv', 'm4v', 'avi', 'mkv']
+const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']
+
 function custodyBadgeClass(estado) {
   return CUSTODY_BADGE[estado] || 'status-badge--neutral'
 }
 
-function EvidenceItem({ ev, transiciones, onChanged }) {
+function mediaKind(filename) {
+  const ext = String(filename || '').split('.').pop()?.toLowerCase() || ''
+  if (AUDIO_EXT.includes(ext)) return 'audio'
+  if (VIDEO_EXT.includes(ext)) return 'video'
+  if (IMAGE_EXT.includes(ext)) return 'image'
+  return null
+}
+
+function EvidenceItem({ ev, transiciones, onChanged, canDelete }) {
   const toast = useToast()
   const opciones = transiciones[ev.estado_custodia] || []
   const [target, setTarget] = useState('')
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [loadingMedia, setLoadingMedia] = useState(false)
+  const [media, setMedia] = useState(null) // { url, kind }
+  const mediaUrlRef = useRef(null)
+
+  useEffect(
+    () => () => {
+      if (mediaUrlRef.current) URL.revokeObjectURL(mediaUrlRef.current)
+    },
+    []
+  )
+
+  const kind = mediaKind(ev.nombre_archivo)
+  const playable = kind === 'audio' || kind === 'video' || kind === 'image'
 
   const apply = async () => {
     if (!target) {
@@ -40,6 +79,56 @@ function EvidenceItem({ ev, transiciones, onChanged }) {
       toast.error('Error', err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const download = async () => {
+    setDownloading(true)
+    try {
+      await evidenciasApi.descargar(ev.id_evidencia, ev.nombre_archivo)
+    } catch (err) {
+      toast.error('No se pudo descargar', err.message)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const togglePlay = async () => {
+    if (media) {
+      if (mediaUrlRef.current) URL.revokeObjectURL(mediaUrlRef.current)
+      mediaUrlRef.current = null
+      setMedia(null)
+      return
+    }
+    setLoadingMedia(true)
+    try {
+      const { blob } = await evidenciasApi.reproducirBlob(ev.id_evidencia)
+      const url = URL.createObjectURL(blob)
+      mediaUrlRef.current = url
+      setMedia({ url, kind })
+    } catch (err) {
+      toast.error('No se pudo cargar', err.message)
+    } finally {
+      setLoadingMedia(false)
+    }
+  }
+
+  const remove = async () => {
+    if (
+      !window.confirm(
+        `¿Eliminar definitivamente la evidencia «${ev.nombre_archivo}»? Esta acción no se puede deshacer.`
+      )
+    )
+      return
+    setDeleting(true)
+    try {
+      await evidenciasApi.eliminar(ev.id_evidencia)
+      toast.success('Evidencia eliminada', `Se eliminó la evidencia #${ev.id_evidencia}`)
+      onChanged()
+    } catch (err) {
+      toast.error('No se pudo eliminar', err.message)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -77,6 +166,56 @@ function EvidenceItem({ ev, transiciones, onChanged }) {
         <span>{ev.tipo_evidencia}</span>
         <span>{ev.fecha_subida}</span>
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="secondary" onClick={download} disabled={downloading}>
+          {downloading ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />}
+          Descargar
+        </Button>
+        {playable && (
+          <Button type="button" size="sm" variant="secondary" onClick={togglePlay} disabled={loadingMedia}>
+            {loadingMedia ? (
+              <Spinner size="sm" />
+            ) : media ? (
+              <X className="h-3.5 w-3.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            {media ? 'Cerrar' : kind === 'image' ? 'Ver' : 'Reproducir'}
+          </Button>
+        )}
+        {canDelete && (
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            className="ml-auto"
+            onClick={remove}
+            disabled={deleting}
+          >
+            {deleting ? <Spinner size="sm" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Eliminar
+          </Button>
+        )}
+      </div>
+
+      {media && (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-900/5 p-3">
+          {media.kind === 'audio' && (
+            <audio controls autoPlay src={media.url} className="w-full">
+              Tu navegador no soporta la reproducción de audio.
+            </audio>
+          )}
+          {media.kind === 'video' && (
+            <video controls autoPlay src={media.url} className="max-h-80 w-full rounded-lg">
+              Tu navegador no soporta la reproducción de video.
+            </video>
+          )}
+          {media.kind === 'image' && (
+            <img src={media.url} alt={ev.nombre_archivo} className="max-h-80 w-full rounded-lg object-contain" />
+          )}
+        </div>
+      )}
 
       {opciones.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
@@ -125,6 +264,8 @@ function EvidenceItem({ ev, transiciones, onChanged }) {
 
 export default function TabEvidencias({ caseNumber }) {
   const toast = useToast()
+  const { user } = useAuth()
+  const canDelete = isComisario(user) || isAdmin(user)
   const [items, setItems] = useState([])
   const [transiciones, setTransiciones] = useState({})
   const [loading, setLoading] = useState(true)
@@ -199,6 +340,7 @@ export default function TabEvidencias({ caseNumber }) {
                 ev={ev}
                 transiciones={transiciones}
                 onChanged={load}
+                canDelete={canDelete}
               />
             ))}
           </ul>

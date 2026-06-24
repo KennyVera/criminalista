@@ -32,6 +32,10 @@ urlpatterns = [
         include("packages.evidencias_digitales.urls"),
     ),
     path(
+        "involucrados/",
+        include("packages.involucrados.urls"),
+    ),
+    path(
         "reporteria/",
         include("packages.reporteria_exportacion.urls"),
     ),

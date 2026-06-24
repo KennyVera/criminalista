@@ -9,7 +9,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.cache.redis_cache import cache_response
-from packages.expedientes_criminales.permissions import CanAccessExpedienteJWT
+from packages.expedientes_criminales.permissions import (
+    CanAccessExpedienteJWT,
+    CanEditExpedienteJWT,
+    CanListExpedientesJWT,
+    CanManageBitacoraJWT,
+    CanManageExpedienteLifecycleJWT,
+    CanRegisterExpedienteJWT,
+)
 from packages.expedientes_criminales.services.expediente_service import ExpedienteService
 from packages.expedientes_criminales.services.informe_pdf_ecuador import build_informe_pdf
 from packages.shared.audit import audit_request
@@ -31,6 +38,251 @@ def _err(exc: Exception, code=400):
 
 def _svc() -> ExpedienteService:
     return ExpedienteService()
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedientesListView(APIView):
+    """GET — listado/búsqueda paginada de expedientes. POST — registrar nuevo (Oficial)."""
+
+    parser_classes = [JSONParser, FormParser]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [CanRegisterExpedienteJWT()]
+        return [CanListExpedientesJWT()]
+
+    def get(self, request):
+        try:
+            return Response(
+                _svc().search_expedientes(
+                    q=request.query_params.get("q", ""),
+                    estado=request.query_params.get("estado", ""),
+                    page=int(request.query_params.get("page", 1) or 1),
+                    per_page=int(request.query_params.get("per_page", 10) or 10),
+                )
+            )
+        except Exception as exc:
+            return _err(exc, 500)
+
+    def post(self, request):
+        try:
+            row = _svc().register_expediente(user=request.crimetrack_user, data=request.data)
+            audit_request(
+                request,
+                accion="EXPEDIENTE_CREATED",
+                tabla="app_expedientes",
+                detalle=(
+                    f"{_actor(request)} registró el expediente {row.get('case_number')} "
+                    f"«{row.get('titulo')}» ({row.get('tipo_delito')}) — estado ACTIVO"
+                ),
+                despues=row,
+            )
+            return Response(row, status=status.HTTP_201_CREATED)
+        except ValueError as exc:
+            return _err(exc)
+        except Exception as exc:
+            return _err(exc, 500)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteCatalogosView(APIView):
+    """GET — catálogos para formularios (distritos del sistema, tipos, prioridades)."""
+
+    permission_classes = [CanListExpedientesJWT]
+
+    def get(self, request):
+        return Response(_svc().catalogos())
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class IncidentesDisponiblesView(APIView):
+    """GET — busca incidentes (por código, fecha o lugar) para vincular a un expediente."""
+
+    permission_classes = [CanListExpedientesJWT]
+
+    def get(self, request):
+        solo_disp = str(request.query_params.get("solo_disponibles", "1")).lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        return Response(
+            {
+                "items": _svc().buscar_incidentes(
+                    q=request.query_params.get("q", ""),
+                    solo_disponibles=solo_disp,
+                    excluir_case=request.query_params.get("excluir_case", ""),
+                    limit=int(request.query_params.get("limit", 20) or 20),
+                )
+            }
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteIncidentesView(APIView):
+    """GET — incidentes vinculados a un expediente."""
+
+    permission_classes = [CanAccessExpedienteJWT]
+
+    def get(self, request, case_number: str):
+        return Response({"items": _svc().incidentes_de_expediente(case_number)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteDuplicadosView(APIView):
+    """GET — sugiere expedientes duplicados/similares antes de registrar."""
+
+    permission_classes = [CanRegisterExpedienteJWT]
+
+    def get(self, request):
+        return Response(
+            {
+                "items": _svc().find_similar(
+                    case_number=request.query_params.get("case_number", ""),
+                    titulo=request.query_params.get("titulo", ""),
+                )
+            }
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteEditarView(APIView):
+    """PATCH — editar datos del expediente (Detective asignado / Comisario)."""
+
+    permission_classes = [CanEditExpedienteJWT]
+    parser_classes = [JSONParser, FormParser]
+
+    def patch(self, request, case_number: str):
+        try:
+            result = _svc().update_expediente(
+                case_number, user=request.crimetrack_user, data=request.data
+            )
+            cambios = ", ".join(result["despues"].keys())
+            audit_request(
+                request,
+                accion="EXPEDIENTE_UPDATED",
+                tabla="app_expedientes",
+                detalle=(
+                    f"{_actor(request)} editó el expediente {case_number} "
+                    f"(campos: {cambios})"
+                ),
+                antes=result["antes"],
+                despues=result["despues"],
+            )
+            return Response(result)
+        except ValueError as exc:
+            return _err(exc)
+        except Exception as exc:
+            return _err(exc, 500)
+
+
+_ESTADO_ACCION_META = {
+    "cerrar": ("EXPEDIENTE_CLOSED", "cerró"),
+    "reabrir": ("EXPEDIENTE_REOPENED", "reabrió"),
+    "archivar": ("EXPEDIENTE_ARCHIVED", "archivó"),
+    "eliminar": ("EXPEDIENTE_DELETED", "eliminó lógicamente"),
+}
+
+
+def _audit_estado(request, case_number: str, accion: str, result: dict):
+    meta = _ESTADO_ACCION_META.get(accion, ("EXPEDIENTE_STATE_CHANGED", "cambió el estado de"))
+    audit_request(
+        request,
+        accion=meta[0],
+        tabla="app_expedientes",
+        detalle=(
+            f"{_actor(request)} {meta[1]} el expediente {case_number} "
+            f"({result.get('estado_anterior')} → {result.get('estado_nuevo')}). "
+            f"Motivo: {result.get('motivo')}"
+        ),
+        antes={"estado": result.get("estado_anterior")},
+        despues={"estado": result.get("estado_nuevo"), "motivo": result.get("motivo")},
+    )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteCerrarView(APIView):
+    """POST — cerrar expediente (Detective asignado / Comisario)."""
+
+    permission_classes = [CanEditExpedienteJWT]
+    parser_classes = [JSONParser, FormParser]
+
+    def post(self, request, case_number: str):
+        try:
+            result = _svc().change_estado(
+                case_number,
+                user=request.crimetrack_user,
+                accion="cerrar",
+                motivo=str(request.data.get("motivo", "")),
+            )
+            _audit_estado(request, case_number, "cerrar", result)
+            return Response(result)
+        except ValueError as exc:
+            return _err(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteReabrirView(APIView):
+    """POST — reabrir expediente cerrado (solo Comisario/Admin)."""
+
+    permission_classes = [CanManageExpedienteLifecycleJWT]
+    parser_classes = [JSONParser, FormParser]
+
+    def post(self, request, case_number: str):
+        try:
+            result = _svc().change_estado(
+                case_number,
+                user=request.crimetrack_user,
+                accion="reabrir",
+                motivo=str(request.data.get("motivo", "")),
+            )
+            _audit_estado(request, case_number, "reabrir", result)
+            return Response(result)
+        except ValueError as exc:
+            return _err(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteArchivarView(APIView):
+    """POST — archivar expediente cerrado (solo Comisario/Admin)."""
+
+    permission_classes = [CanManageExpedienteLifecycleJWT]
+    parser_classes = [JSONParser, FormParser]
+
+    def post(self, request, case_number: str):
+        try:
+            result = _svc().change_estado(
+                case_number,
+                user=request.crimetrack_user,
+                accion="archivar",
+                motivo=str(request.data.get("motivo", "")),
+            )
+            _audit_estado(request, case_number, "archivar", result)
+            return Response(result)
+        except ValueError as exc:
+            return _err(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ExpedienteEliminarView(APIView):
+    """DELETE — eliminación lógica del expediente (solo Comisario/Admin)."""
+
+    permission_classes = [CanManageExpedienteLifecycleJWT]
+    parser_classes = [JSONParser, FormParser]
+
+    def delete(self, request, case_number: str):
+        motivo = str(request.data.get("motivo", "") or request.query_params.get("motivo", ""))
+        try:
+            result = _svc().change_estado(
+                case_number,
+                user=request.crimetrack_user,
+                accion="eliminar",
+                motivo=motivo,
+            )
+            _audit_estado(request, case_number, "eliminar", result)
+            return Response(result)
+        except ValueError as exc:
+            return _err(exc)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -69,6 +321,7 @@ class ExpedienteInvolucradosView(APIView):
                 case_number,
                 user=request.crimetrack_user,
                 data=request.data,
+                foto=request.FILES.get("foto"),
             )
             tipo = str(request.data.get("tipo_relacion") or "involucrado")
             nombre = f"{request.data.get('nombres', '')} {request.data.get('apellidos', '')}".strip()
@@ -122,7 +375,7 @@ class ExpedienteEvidenciasView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class ExpedienteBitacoraView(APIView):
-    permission_classes = [CanAccessExpedienteJWT]
+    permission_classes = [CanManageBitacoraJWT]
     parser_classes = [JSONParser]
 
     def get(self, request, case_number: str):

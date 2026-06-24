@@ -28,6 +28,7 @@ TRANSACTIONAL_COLLECTIONS = [
     "app_patrullas",
     "app_patrulla_oficiales",
     "app_incidentes",
+    "app_expedientes",
 ]
 
 SCHEMAS: dict[str, list[str]] = {
@@ -69,6 +70,18 @@ SCHEMAS: dict[str, list[str]] = {
         "apellidos",
         "fecha_nacimiento",
         "antecedentes",
+        "alias",
+        "genero",
+        "nacionalidad",
+        "telefono",
+        "direccion",
+        "estado_civil",
+        "ocupacion",
+        "observaciones",
+        "foto_url",
+        "fecha_registro",
+        "fk_usuario_registro",
+        "actualizado_en",
     ],
     "app_caso_involucrado": [
         "id_relacion",
@@ -195,6 +208,38 @@ SCHEMAS: dict[str, list[str]] = {
         "fecha_despacho",
         "fecha_atendido",
         "fecha_cierre",
+        # Vínculo con el expediente criminal (un incidente pertenece a 0..1 expediente).
+        "fk_expediente",
+        "expediente_case_number",
+        "fecha_vinculacion",
+    ],
+    "app_expedientes": [
+        "id_expediente",
+        "case_number",
+        "fk_caso",
+        "titulo",
+        "descripcion",
+        "tipo_delito",
+        "ubicacion",
+        "prioridad",
+        "fecha_hecho",
+        "estado",
+        "distrito",
+        "sector",
+        "zona",
+        "cuadra",
+        "lugar_hecho",
+        "iucr",
+        "fbi_code",
+        "arresto",
+        "violencia_domestica",
+        "fk_creador",
+        "creador_nombre",
+        "creado_en",
+        "actualizado_en",
+        "motivo_estado",
+        "fk_autoriza",
+        "autoriza_nombre",
     ],
     "app_dashboard_summary": [
         "id_summary",
@@ -263,6 +308,7 @@ class TransactionalMinioStore(MinioParquetStore):
             "app_patrullas": "id_patrulla",
             "app_patrulla_oficiales": "id_patrulla_oficial",
             "app_incidentes": "id_incidente",
+            "app_expedientes": "id_expediente",
         }[name]
         if new_id_col not in row or row[new_id_col] is None:
             row[new_id_col] = int(df[new_id_col].max()) + 1 if len(df) else 1

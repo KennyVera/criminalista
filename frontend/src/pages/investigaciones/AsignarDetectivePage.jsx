@@ -48,6 +48,7 @@ export default function AsignarDetectivePage() {
   const [filtroAsignacion, setFiltroAsignacion] = useState('sin_asignar')
   const [busy, setBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(null)
+  const [soloDisponibles, setSoloDisponibles] = useState(false)
 
   const allowed = canManageAsignaciones(user) || isAdmin(user)
 
@@ -168,6 +169,16 @@ export default function AsignarDetectivePage() {
 
   if (!allowed) return <Navigate to="/" replace />
 
+  const NIVEL_BADGE = {
+    baja: { cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: 'Carga baja' },
+    media: { cls: 'bg-amber-50 text-amber-700 ring-amber-200', label: 'Carga media' },
+    alta: { cls: 'bg-rose-50 text-rose-700 ring-rose-200', label: 'Al límite' },
+  }
+  const detectivesVisibles = soloDisponibles
+    ? detectives.filter((d) => d.recomendado)
+    : detectives
+  const totalDisponibles = detectives.filter((d) => d.recomendado).length
+
   return (
     <section className="mx-auto max-w-7xl space-y-8">
       <header className="page-header">
@@ -187,7 +198,7 @@ export default function AsignarDetectivePage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="glass-card p-5">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-indigo-600" />
               <h3 className="font-semibold text-slate-900">Equipo investigativo</h3>
@@ -202,40 +213,91 @@ export default function AsignarDetectivePage() {
               <RefreshCw className={`h-4 w-4 ${loadingDet ? 'animate-spin' : ''}`} />
             </Button>
           </div>
+
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setSoloDisponibles((v) => !v)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                soloDisponibles
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow'
+                  : 'border border-slate-200 bg-white/70 text-slate-600 hover:border-emerald-300'
+              }`}
+            >
+              <Users className="h-3.5 w-3.5" />
+              Solo disponibles (≤3 casos)
+            </button>
+            <span className="text-xs font-medium text-emerald-600">
+              {totalDisponibles} disponible(s)
+            </span>
+          </div>
+
           {loadingDet ? (
             <div className="flex justify-center py-12">
               <Spinner />
             </div>
+          ) : detectivesVisibles.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-500">
+              No hay detectives con carga baja en este momento.
+            </p>
           ) : (
             <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
-              {detectives.map((d) => (
-                <li
-                  key={d.id_usuario}
-                  className={`rounded-xl border px-3 py-2.5 text-sm transition-all ${
-                    String(fkDetective) === String(d.id_usuario)
-                      ? 'border-indigo-400 bg-indigo-50/80 shadow-md shadow-indigo-500/10 ring-1 ring-indigo-200'
-                      : 'border-slate-200/80 hover:border-indigo-200 hover:bg-slate-50/80'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    className="w-full text-left"
-                    onClick={() => setFkDetective(String(d.id_usuario))}
+              {detectivesVisibles.map((d) => {
+                const nivel = NIVEL_BADGE[d.carga_nivel] || NIVEL_BADGE.media
+                const max = d.max_casos || 8
+                return (
+                  <li
+                    key={d.id_usuario}
+                    className={`rounded-xl border px-3 py-2.5 text-sm transition-all ${
+                      String(fkDetective) === String(d.id_usuario)
+                        ? 'border-indigo-400 bg-indigo-50/80 shadow-md shadow-indigo-500/10 ring-1 ring-indigo-200'
+                        : 'border-slate-200/80 hover:border-indigo-200 hover:bg-slate-50/80'
+                    } ${!d.disponible ? 'opacity-70' : ''}`}
                   >
-                    <p className="font-medium text-slate-900">{d.etiqueta}</p>
-                    <p className="text-xs text-slate-500">{d.email}</p>
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <span
-                        className={`status-badge ${
-                          d.disponible ? 'status-badge--active' : 'status-badge--warning'
-                        }`}
-                      >
-                        {d.casos_activos} casos activos
-                      </span>
-                    </div>
-                  </button>
-                </li>
-              ))}
+                    <button
+                      type="button"
+                      className="w-full text-left disabled:cursor-not-allowed"
+                      onClick={() => setFkDetective(String(d.id_usuario))}
+                      disabled={!d.disponible}
+                      title={!d.disponible ? `Alcanzó el máximo de ${max} casos` : undefined}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-900">{d.etiqueta}</p>
+                          <p className="truncate text-xs text-slate-500">{d.email}</p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${nivel.cls}`}
+                        >
+                          {nivel.label}
+                        </span>
+                      </div>
+                      <div className="mt-2">
+                        <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                          <span>
+                            {d.casos_activos} / {max} casos activos
+                          </span>
+                          {!d.disponible && (
+                            <span className="font-semibold text-rose-600">Sin cupo</span>
+                          )}
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80">
+                          <div
+                            className={`h-full rounded-full ${
+                              d.carga_nivel === 'alta'
+                                ? 'bg-rose-500'
+                                : d.carga_nivel === 'media'
+                                  ? 'bg-amber-500'
+                                  : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${d.carga_pct || 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </Card>
