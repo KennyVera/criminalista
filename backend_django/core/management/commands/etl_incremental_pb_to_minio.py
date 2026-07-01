@@ -2,7 +2,7 @@
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.etl.incremental_etl import run_incremental_etl
+from core.etl.incremental_etl import MAX_INCREMENTAL_BATCH, run_incremental_etl
 
 
 class Command(BaseCommand):
@@ -12,6 +12,13 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=None,
+            help="Máximo de registros nuevos a procesar (1-300000). Default: 300000.",
+        )
+
         parser.add_argument(
             "--per-page",
             type=int,
@@ -27,7 +34,12 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING("ETL incremental PocketBase → MinIO (solo nuevos)…"))
         try:
-            result = run_incremental_etl(per_page=options["per_page"], on_progress=progress)
+            limit = options["limit"] if options["limit"] is not None else MAX_INCREMENTAL_BATCH
+            result = run_incremental_etl(
+                cantidad_registros=limit,
+                per_page=options["per_page"],
+                on_progress=progress,
+            )
         except Exception as exc:
             raise CommandError(str(exc)) from exc
 

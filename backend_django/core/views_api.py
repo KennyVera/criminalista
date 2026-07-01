@@ -14,15 +14,6 @@ from rest_framework.views import APIView
 
 from core.collections_meta import ALLOWED_COLLECTIONS, COLLECTIONS, collection_storage
 
-from core.etl.star_schema import run_etl_pb_to_minio
-from core.services.faker_realistic import run_realistic_seed_batch
-from core.services.faker_seed import (
-    MAX_BATCH_SIZE,
-    MAX_FACTS_PER_REQUEST,
-    run_faker_seed,
-    run_faker_seed_batch,
-)
-
 from core.services.minio_store import MinioParquetStore, is_minio_collection, is_pocketbase_collection
 
 from core.services.pocketbase import PocketBaseClient, PocketBaseError
@@ -650,158 +641,77 @@ def _option_label(item: dict, collection: str) -> str:
     return str(rid)[:24]
 
 
+@method_decorator(csrf_exempt, name="dispatch")
+class PocketBaseSyncStatsView(APIView):
+    """GET /api/sync/pocketbase/stats/ — conteos PB vs MinIO."""
 
+    authentication_classes = []
+    permission_classes = []
 
+    def get(self, request):
+        from core.services.pb_sync_service import pocketbase_sync_stats
 
-def _parse_generate_count(request) -> tuple[int | None, Response | None]:
-    count = request.data.get("count")
-    if count is None:
-        return None, Response(
-            {"error": "El campo 'count' es obligatorio"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    try:
-        count = int(count)
-    except (TypeError, ValueError):
-        return None, Response(
-            {"error": "'count' debe ser un numero entero"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    return count, None
+        try:
+            return Response(pocketbase_sync_stats())
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class GenerateFakeDataView(APIView):
-    """POST /api/generate-fake-data/ — encola generación (202 + task_id, no bloquea)."""
+class SyncPocketBaseView(APIView):
+    """POST /api/sync/pocketbase/ — ETL PocketBase -> MinIO (+ resumen materializado)."""
 
     authentication_classes = []
     permission_classes = []
 
     def post(self, request):
-        count, err = _parse_generate_count(request)
-        if err:
-            return err
-        if count < 1 or count > MAX_FACTS_PER_REQUEST:
-            return Response(
-                {"error": f"'count' debe estar entre 1 y {MAX_FACTS_PER_REQUEST}"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if request.data.get("sync") is True:
-            try:
-                result = run_faker_seed(count)
-                code = (
-                    status.HTTP_201_CREATED
-                    if result.get("success")
-                    else status.HTTP_400_BAD_REQUEST
-                )
-                return Response(result, status=code)
-            except Exception as exc:
-                return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        from core.cache.invalidation import invalidate_after_etl
+        from core.services.pb_sync_service import run_pocketbase_sync
 
-        from core.async_jobs import enqueue_faker_job
+        mode = str(request.data.get("mode", "auto"))
+        export_raw = bool(request.data.get("export_raw_copy", True))
+        per_page = int(request.data.get("per_page", 500))
+        cantidad_registros = request.data.get("cantidad_registros")
 
-        payload = enqueue_faker_job(count, realistic=False)
-        return Response(
-            {
-                **payload,
-                "message": "Generación en segundo plano. Consulta el estado con task_id.",
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class GenerateFakeDataBatchView(APIView):
-    """POST /api/generate-fake-data/batch/ — encola lote (máx. 5000 por petición)."""
-
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        count, err = _parse_generate_count(request)
-        if err:
-            return err
-        if count < 1 or count > MAX_BATCH_SIZE:
-            return Response(
-                {"error": f"'count' debe estar entre 1 y {MAX_BATCH_SIZE} por lote"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if request.data.get("sync") is True:
-            try:
-                result = run_faker_seed_batch(count)
-                code = (
-                    status.HTTP_201_CREATED
-                    if result.get("success")
-                    else status.HTTP_400_BAD_REQUEST
-                )
-                return Response(result, status=code)
-            except Exception as exc:
-                return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        from core.async_jobs import enqueue_faker_job
-
-        payload = enqueue_faker_job(count, realistic=False)
-        return Response({**payload, "batch": True}, status=status.HTTP_202_ACCEPTED)
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class GenerateFakeDataRealisticBatchView(APIView):
-    """POST /api/generate-fake-data/realistic/batch/ — encola lote realista 2001–2026."""
-
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        count, err = _parse_generate_count(request)
-        if err:
-            return err
-        if count < 1 or count > MAX_BATCH_SIZE:
-            return Response(
-                {"error": f"'count' debe estar entre 1 y {MAX_BATCH_SIZE} por lote"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if request.data.get("sync") is True:
-            try:
-                result = run_realistic_seed_batch(count)
-                code = (
-                    status.HTTP_201_CREATED
-                    if result.get("success")
-                    else status.HTTP_400_BAD_REQUEST
-                )
-                return Response(result, status=code)
-            except Exception as exc:
-                return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        from core.async_jobs import enqueue_faker_job
-
-        payload = enqueue_faker_job(count, realistic=True)
-        return Response({**payload, "realistic": True, "batch": True}, status=status.HTTP_202_ACCEPTED)
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class RunEtlToMinioView(APIView):
-    """POST /api/etl/pb-to-minio/ — crimes_220k -> dimensiones + fact en MinIO."""
-
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        from core.services.analytics_service import invalidate_dashboard_cache
-
-        export_raw = request.data.get("export_raw_copy", True)
         try:
             if request.data.get("sync") is True:
-                result = run_etl_pb_to_minio(export_raw_copy=bool(export_raw))
-                invalidate_dashboard_cache()
+                from core.services.pb_sync_service import validate_cantidad_registros
+
+                parsed_limit = (
+                    validate_cantidad_registros(cantidad_registros)
+                    if cantidad_registros is not None
+                    else None
+                )
+                result = run_pocketbase_sync(
+                    mode=mode,
+                    export_raw_copy=export_raw,
+                    per_page=per_page,
+                    cantidad_registros=parsed_limit,
+                )
+                invalidate_after_etl(refresh_dashboard=True)
                 return Response(result, status=status.HTTP_200_OK)
 
-            from core.async_jobs import enqueue_etl_job
+            from core.async_jobs import enqueue_sync_job
+            from core.services.pb_sync_service import validate_cantidad_registros
 
-            payload = enqueue_etl_job(export_raw_copy=bool(export_raw))
+            parsed_limit = (
+                validate_cantidad_registros(cantidad_registros)
+                if cantidad_registros is not None
+                else None
+            )
+            payload = enqueue_sync_job(
+                mode=mode,
+                export_raw_copy=export_raw,
+                per_page=per_page,
+                cantidad_registros=parsed_limit,
+            )
             return Response(
                 {
                     **payload,
-                    "message": "ETL en segundo plano. Consulta /api/etl-status/<task_id>/",
+                    "message": (
+                        "Sincronización en segundo plano. "
+                        "Consulta /api/jobs/status/<task_id>/"
+                    ),
                 },
                 status=status.HTTP_202_ACCEPTED,
             )
@@ -809,42 +719,19 @@ class RunEtlToMinioView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
             return Response(
-                {"error": f"Error en ETL: {exc}"},
+                {"error": f"Error en sincronización: {exc}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class GenerateFakeDataAsyncView(APIView):
-    """POST /api/generate-fake-data/async/ — Celery + bulk 5000 (no bloquea Django)."""
+class RunEtlToMinioView(SyncPocketBaseView):
+    """POST /api/etl/pb-to-minio/ — alias de sincronización (compatibilidad)."""
 
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        count, err = _parse_generate_count(request)
-        if err:
-            return err
-        if count < 1 or count > 500_000:
-            return Response(
-                {"error": "count debe estar entre 1 y 500000"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        realistic = bool(request.data.get("realistic", False))
-        from core.async_jobs import enqueue_faker_job
-
-        payload = enqueue_faker_job(count, realistic=realistic)
-        return Response(
-            {
-                **payload,
-                "message": "Generación en segundo plano. Consulta el estado con task_id.",
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
 
 
 class UnifiedJobStatusView(APIView):
-    """GET estado unificado (faker, ETL, Celery o hilo en segundo plano)."""
+    """GET estado unificado (sync/ETL, Celery o hilo en segundo plano)."""
 
     authentication_classes = []
     permission_classes = []
@@ -862,8 +749,4 @@ class EtlTaskStatusView(UnifiedJobStatusView):
 
 class EtlStatusAliasView(UnifiedJobStatusView):
     """GET /api/etl-status/<task_id>/ — alias para polling del frontend."""
-
-
-class GenerateFakeDataTaskStatusView(UnifiedJobStatusView):
-    """GET /api/generate-fake-data/status/<task_id>/"""
 

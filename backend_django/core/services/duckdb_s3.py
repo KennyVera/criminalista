@@ -66,14 +66,34 @@ class DuckDBS3Session:
         return self._con
 
     def fact_parquet_source(self) -> str:
+        prefix = self.store.prefix.rstrip("/")
+        uris: list[str] = []
         if self.store.has_consolidated_facts():
-            return self.s3_uri(self.store.fact_crimes_consolidated_key())
-        if self.store.has_partitioned_facts():
-            return self.s3_uri(self.store.fact_crimes_glob())
-        return self.s3_uri(self.store._object_key("fact_crimes"))
+            uris.append(self.s3_uri(self.store.fact_crimes_consolidated_key()))
+            if self.store.has_incremental_facts():
+                uris.append(self.s3_uri(f"{prefix}/fact_crimes/incremental/*.parquet"))
+        elif self.store.has_partitioned_facts():
+            uris.append(self.s3_uri(self.store.fact_crimes_glob()))
+        else:
+            uris.append(self.s3_uri(self.store._object_key("fact_crimes")))
+        if len(uris) == 1:
+            return uris[0]
+        return "[" + ", ".join(f"'{u}'" for u in uris) + "]"
 
     def dim_parquet(self, collection: str) -> str:
-        return self.s3_uri(self.store._object_key(collection))
+        prefix = self.store.prefix.rstrip("/")
+        base = self.s3_uri(self.store._object_key(collection))
+        if self.store.has_dim_incremental(collection):
+            delta = self.s3_uri(f"{prefix}/{collection}/incremental/*.parquet")
+            return f"['{base}', '{delta}']"
+        return base
+
+    @staticmethod
+    def read_parquet_expr(source: str) -> str:
+        """Fragmento SQL listo para FROM read_parquet(...)."""
+        if source.startswith("["):
+            return f"read_parquet({source})"
+        return f"read_parquet('{source}')"
 
     def _fact_read_sql(self) -> str:
         """hive_partitioning solo en hechos particionados (no en consolidado)."""

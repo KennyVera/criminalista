@@ -35,7 +35,8 @@ class AnalyticsService:
     def count_fact_crimes(self) -> int:
         con = self.connection()
         src = self._fact_parquet_source()
-        row = con.execute(f"SELECT COUNT(*)::BIGINT AS c FROM read_parquet('{src}')").fetchone()
+        expr = DuckDBS3Session.read_parquet_expr(src)
+        row = con.execute(f"SELECT COUNT(*)::BIGINT AS c FROM {expr}").fetchone()
         return int(row[0]) if row else 0
 
     def count_dimension(self, collection: str) -> int:

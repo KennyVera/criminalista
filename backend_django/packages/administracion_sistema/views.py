@@ -42,11 +42,34 @@ class AdminUsersListCreateView(APIView):
 
     def post(self, request):
         try:
+            plain_password = str(request.data.get("password") or "CrimeTrack2026!")
             user = UsersAdminService().create_user(request.data)
             fk_rol = int(request.data.get("fk_rol", user["fk_rol"]))
-            codigos = request.data.get("permisos", [])
-            if codigos:
-                PermissionsAdminService().set_role_permissions(fk_rol, codigos)
+            email_sent = False
+            email_error = ""
+            try:
+                from django.conf import settings
+                from packages.autenticacion_seguridad.services.email_service import (
+                    send_new_user_credentials,
+                )
+
+                login_url = getattr(
+                    settings,
+                    "CRIMETRACK_LOGIN_URL",
+                    "http://localhost:5173/login",
+                )
+                nombre = f"{user.get('nombres', '')} {user.get('apellidos', '')}".strip()
+                send_new_user_credentials(
+                    to_email=user["email"],
+                    nombre=nombre or user["email"],
+                    password=plain_password,
+                    numero_placa=user.get("numero_placa", ""),
+                    nombre_rol=user.get("nombre_rol", ""),
+                    login_url=login_url,
+                )
+                email_sent = True
+            except Exception as exc:
+                email_error = str(exc)
             audit_request(
                 request,
                 accion="USER_CREATED",
@@ -54,7 +77,23 @@ class AdminUsersListCreateView(APIView):
                 detalle=f"Usuario creado: {user.get('email')} (rol {fk_rol})",
                 despues=user,
             )
-            return Response(user, status=status.HTTP_201_CREATED)
+            payload = {**user, "email_sent": email_sent}
+            if email_error:
+                payload["email_error"] = email_error
+            return Response(payload, status=status.HTTP_201_CREATED)
+        except ValueError as exc:
+            return _err(exc)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AdminGeneratePlacaView(APIView):
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request):
+        try:
+            fk_rol = int(request.query_params.get("fk_rol", 4))
+            placa = UsersAdminService().generate_numero_placa(fk_rol)
+            return Response({"numero_placa": placa})
         except ValueError as exc:
             return _err(exc)
 
@@ -76,11 +115,7 @@ class AdminUserDetailView(APIView):
             user = UsersAdminService().update_user(user_id, request.data)
             if not user:
                 return Response({"error": "No encontrado"}, status=404)
-            if "permisos" in request.data:
-                PermissionsAdminService().set_role_permissions(
-                    user["fk_rol"], request.data["permisos"]
-                )
-            campos = [k for k in request.data.keys() if k not in ("password",)]
+            campos = [k for k in request.data.keys() if k not in ("password", "permisos")]
             audit_request(
                 request,
                 accion="USER_UPDATED",

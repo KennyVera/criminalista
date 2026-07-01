@@ -8,12 +8,10 @@ Estrategia:
      recorriendo por @rowid descendente (los nuevos son los últimos insertados).
   3. Calcula los miembros NUEVOS de cada dimensión (continuando los ids existentes),
      los enriquece y los anexa a cada dimensión.
-  4. Construye los hechos de los nuevos registros (ids continuando max(id)) y los
-     anexa al fact consolidado.
-  5. Re-materializa el resumen del dashboard e invalida la caché.
+  4. Escribe hechos en lote append-only (sin reescribir el Parquet consolidado).
+  5. Actualiza checkpoint + índice de IDs; parchea el total del dashboard (sin agregar todo el OLAP).
 
-El dashboard (DuckDB) lee únicamente fact_crimes/consolidated/latest.parquet y un
-Parquet por dimensión, por lo que el append es consistente sin duplicar lecturas.
+DuckDB lee consolidated/latest.parquet + fact_crimes/incremental/*.parquet.
 """
 
 from __future__ import annotations
@@ -24,13 +22,26 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from core.etl.dim_enrichment import ENRICHERS, _add_legacy_id
+from core.etl.fast_dim_lookup import load_dim_keys_cached, resolve_dim_for_batch
 from core.etl.fast_keys import as_merge_str, composite_key
 from core.etl.streaming_fact_writer import _build_fact_chunk
+from core.etl.sync_checkpoint import (
+    append_dim_delta,
+    append_dim_keys_index,
+    append_id_index,
+    ensure_sync_state,
+    patch_dashboard_fact_count,
+    save_checkpoint,
+    write_incremental_fact_batch,
+)
 from core.services.minio_store import DIM_COLLECTIONS, MinioParquetStore
 from core.services.pocketbase import PocketBaseClient
 
 ProgressFn = Callable[[dict[str, Any]], None]
+
+# Tope por ejecución (carga incremental controlada desde la UI).
+MAX_INCREMENTAL_BATCH = 300_000
+MIN_INCREMENTAL_BATCH = 1
 
 _PB_DROP_COLS = frozenset({"collectionId", "collectionName", "expand"})
 
@@ -55,15 +66,11 @@ def _emit(on_progress: ProgressFn | None, **kwargs: Any) -> None:
 
 
 def _read_consolidated_fact(store: MinioParquetStore) -> pd.DataFrame:
-    key = store.fact_crimes_consolidated_key()
-    try:
-        obj = store._client.get_object(Bucket=store.bucket, Key=key)
-        return pd.read_parquet(io.BytesIO(obj["Body"].read()))
-    except Exception:
-        return pd.DataFrame()
+    return store.read_consolidated_fact_df()
 
 
 def _write_consolidated_fact(store: MinioParquetStore, df: pd.DataFrame) -> None:
+    """Solo para migraciones / consolidación manual (no usado en ruta rápida incremental)."""
     buffer = io.BytesIO()
     df.to_parquet(buffer, index=False, compression="snappy")
     buffer.seek(0)
@@ -81,32 +88,55 @@ def _extract_new_records(
     existing_ids: set[str],
     *,
     per_page: int = 500,
+    max_records: int | None = None,
     stop_streak: int = 2000,
     on_progress: ProgressFn | None = None,
-) -> list[dict[str, Any]]:
-    """Recorre crimes_220k por @rowid descendente y junta los no presentes en el fact."""
+) -> tuple[list[dict[str, Any]], int, int]:
+    """
+    Recorre crimes_220k por @rowid descendente (más recientes primero) con paginación.
+
+    Solo acumula registros cuyo `id` NO está en MinIO (cero duplicados).
+    Detiene cuando alcanza max_records nuevos o tras stop_streak existentes consecutivos.
+
+    Returns:
+        (nuevos, escaneados, omitidos_por_duplicado)
+    """
     new_records: list[dict[str, Any]] = []
     consecutive_existing = 0
     scanned = 0
+    skipped_duplicates = 0
+    limit = max_records if max_records is not None else MAX_INCREMENTAL_BATCH
+
     for rec in pb.iter_records("crimes_220k", per_page=per_page, sort="-@rowid"):
         scanned += 1
-        rid = str(rec.get("id"))
+        rid = str(rec.get("id", "")).strip()
+        if not rid:
+            continue
         if rid in existing_ids:
+            skipped_duplicates += 1
             consecutive_existing += 1
             if consecutive_existing >= stop_streak:
                 break
             continue
         consecutive_existing = 0
         new_records.append(rec)
-        if on_progress and len(new_records) % 5000 == 0:
+        if len(new_records) >= limit:
+            break
+        if on_progress and len(new_records) % 1000 == 0:
+            pct = min(40, 8 + int(32 * len(new_records) / max(limit, 1)))
             _emit(
                 on_progress,
                 phase="extract",
-                message=f"Nuevos detectados: {len(new_records):,}".replace(",", "."),
+                percent=pct,
+                message=(
+                    f"Extraídos {len(new_records):,} nuevos "
+                    f"(escaneados {scanned:,}, omitidos {skipped_duplicates:,})"
+                ).replace(",", "."),
                 new_count=len(new_records),
                 scanned=scanned,
+                skipped_duplicates=skipped_duplicates,
             )
-    return new_records
+    return new_records, scanned, skipped_duplicates
 
 
 def _records_to_df(records: list[dict[str, Any]]) -> pd.DataFrame:
@@ -150,48 +180,78 @@ def _new_dim_members(
 
 def run_incremental_etl(
     *,
+    cantidad_registros: int = MAX_INCREMENTAL_BATCH,
     per_page: int = 500,
     on_progress: ProgressFn | None = None,
 ) -> dict[str, Any]:
+    if cantidad_registros < MIN_INCREMENTAL_BATCH or cantidad_registros > MAX_INCREMENTAL_BATCH:
+        raise ValueError(
+            f"cantidad_registros debe estar entre {MIN_INCREMENTAL_BATCH} y {MAX_INCREMENTAL_BATCH}"
+        )
+
     t0 = time.time()
     store = MinioParquetStore()
+    fetch_page = min(max(cantidad_registros, 50), per_page)
 
-    _emit(on_progress, phase="read", percent=2, message="Leyendo fact consolidado en MinIO...")
-    fact_df = _read_consolidated_fact(store)
-    if fact_df.empty:
-        raise ValueError(
-            "No hay fact_crimes consolidado en MinIO. Ejecuta primero el ETL completo "
-            "(python manage.py etl_pb_to_minio)."
-        )
-    existing_ids = set(as_merge_str(fact_df["raw_row_id"]))
-    max_fact_id = int(pd.to_numeric(fact_df["id"], errors="coerce").max())
+    _emit(on_progress, phase="read", percent=2, message="Cargando checkpoint de sincronización...")
+    existing_ids, max_fact_id, fact_count, dim_max_ids, checkpoint = ensure_sync_state(store)
 
     _emit(
         on_progress,
         phase="extract",
         percent=8,
-        message=f"Fact actual: {len(fact_df):,} filas. Buscando nuevos en PocketBase...".replace(",", "."),
+        message=(
+            f"Hechos en MinIO: {fact_count:,}. "
+            f"Extrayendo hasta {cantidad_registros:,} nuevos desde PocketBase..."
+        ).replace(",", "."),
     )
 
     with PocketBaseClient() as pb:
         pb.auth_admin()
-        new_records = _extract_new_records(pb, existing_ids, per_page=per_page, on_progress=on_progress)
+        new_records, scanned, skipped_duplicates = _extract_new_records(
+            pb,
+            existing_ids,
+            per_page=fetch_page,
+            max_records=cantidad_registros,
+            stop_streak=500 if cantidad_registros <= 500 else 2000,
+            on_progress=on_progress,
+        )
 
     if not new_records:
         return {
             "success": True,
             "new_records": 0,
+            "cantidad_registros": cantidad_registros,
+            "scanned": scanned,
+            "skipped_duplicates": skipped_duplicates,
             "elapsed_seconds": round(time.time() - t0, 2),
             "message": "No hay registros nuevos en PocketBase respecto a MinIO. Nada que hacer.",
         }
 
     new_raw = _records_to_df(new_records)
+    # Segunda barrera anti-duplicados antes de transformar (cero duplicados en el modelo).
+    if "id" in new_raw.columns:
+        before = len(new_raw)
+        new_raw = new_raw[~new_raw["id"].astype(str).isin(existing_ids)].reset_index(drop=True)
+        skipped_duplicates += before - len(new_raw)
+
     n_new = len(new_raw)
+    if n_new == 0:
+        return {
+            "success": True,
+            "new_records": 0,
+            "cantidad_registros": cantidad_registros,
+            "scanned": scanned,
+            "skipped_duplicates": skipped_duplicates,
+            "elapsed_seconds": round(time.time() - t0, 2),
+            "message": "Todos los registros extraídos ya existían en MinIO (duplicados omitidos).",
+        }
+
     _emit(
         on_progress,
         phase="transform",
         percent=45,
-        message=f"{n_new:,} registros nuevos. Calculando dimensiones...".replace(",", "."),
+        message=f"{n_new:,} registros nuevos (sin duplicados). Calculando dimensiones...".replace(",", "."),
         new_count=n_new,
     )
 
@@ -203,70 +263,85 @@ def run_incremental_etl(
     specs = dict(DIM_SPECS)
     specs["dim_ubicacion_geografica"] = (geo_cols, ["latitude", "longitude"], {})
 
+    # Precarga índices compactos de dimensiones (una lectura S3 por dim; luego en RAM).
+    for name in DIM_COLLECTIONS:
+        _, key_cols, _ = specs[name]
+        load_dim_keys_cached(store, name, key_cols)
+
     dims_for_fact: dict[str, pd.DataFrame] = {}
     dim_appends: dict[str, dict[str, Any]] = {}
 
     for name in DIM_COLLECTIONS:
         cols, key_cols, defaults = specs[name]
-        existing_dim = store.read_df(name, use_cache=False)
-        new_members = _new_dim_members(new_raw, existing_dim, cols, key_cols, defaults)
-
-        if new_members.empty:
-            dims_for_fact[name] = (
-                existing_dim[key_cols + ["id"]] if not existing_dim.empty else pd.DataFrame(columns=key_cols + ["id"])
-            )
-            dim_appends[name] = {"new": 0, "total": len(existing_dim)}
-            continue
-
-        # FK lookup combinado (claves naturales + id), sin enriquecer.
-        base_existing = existing_dim[key_cols + ["id"]] if not existing_dim.empty else pd.DataFrame(columns=key_cols + ["id"])
-        dims_for_fact[name] = pd.concat(
-            [base_existing, new_members[key_cols + ["id"]]], ignore_index=True
+        lookup, enriched_new, total_dim = resolve_dim_for_batch(
+            store,
+            name,
+            cols=cols,
+            key_cols=key_cols,
+            defaults=defaults,
+            new_raw=new_raw,
+            dim_max_ids=dim_max_ids,
         )
-
-        enricher = ENRICHERS.get(name)
-        enriched_new = enricher(new_members) if enricher else _add_legacy_id(new_members)
-        updated_dim = pd.concat([existing_dim, enriched_new], ignore_index=True)
-        store.write_df(name, updated_dim)
-        dim_appends[name] = {"new": len(new_members), "total": len(updated_dim)}
+        dims_for_fact[name] = lookup
+        if enriched_new.empty:
+            dim_appends[name] = {"new": 0, "total": total_dim}
+            continue
+        append_dim_delta(store, name, enriched_new)
+        cols, key_cols, _ = specs[name]
+        append_dim_keys_index(store, name, enriched_new, key_cols)
+        dim_appends[name] = {"new": len(enriched_new), "total": total_dim}
         _emit(
             on_progress,
             phase="upload",
-            message=f"{name}: +{len(new_members):,} (total {len(updated_dim):,})".replace(",", "."),
+            message=f"{name}: +{len(enriched_new):,} (total {total_dim:,})".replace(",", "."),
         )
 
     _emit(on_progress, phase="transform", percent=80, message="Construyendo hechos nuevos...")
     new_fact = _build_fact_chunk(new_raw, dims_for_fact, start_id=max_fact_id + 1)
     new_fact = new_fact.drop(columns=[c for c in new_fact.columns if c in ("year", "month")], errors="ignore")
 
-    updated_fact = pd.concat([fact_df, new_fact], ignore_index=True)
     _emit(
         on_progress,
         phase="upload",
         percent=92,
-        message=f"Anexando {len(new_fact):,} hechos → {len(updated_fact):,} totales...".replace(",", "."),
+        message=f"Guardando lote incremental de {len(new_fact):,} hechos...".replace(",", "."),
     )
-    _write_consolidated_fact(store, updated_fact)
+    batch_key = write_incremental_fact_batch(store, new_fact)
+    append_id_index(store, new_fact["raw_row_id"].astype(str).tolist())
 
-    _emit(on_progress, phase="done", percent=98, message="Re-materializando resumen del dashboard...")
-    from core.services.analytics_service import invalidate_dashboard_cache
-    from packages.dashboard_analitica.services.summary_materializer import (
-        materialize_dashboard_summary,
+    fact_after = fact_count + n_new
+    max_fact_after = max_fact_id + n_new
+    save_checkpoint(
+        store,
+        {
+            **checkpoint,
+            "max_fact_id": max_fact_after,
+            "fact_count": fact_after,
+            "dim_max_ids": dim_max_ids,
+        },
     )
+    store.invalidate_cache("fact_crimes")
 
-    materialize_dashboard_summary()
-    invalidate_dashboard_cache()
+    _emit(on_progress, phase="done", percent=98, message="Actualizando contador del dashboard...")
+    patch_dashboard_fact_count(fact_after)
 
     elapsed = round(time.time() - t0, 2)
     return {
         "success": True,
         "new_records": n_new,
-        "fact_before": len(fact_df),
-        "fact_after": len(updated_fact),
+        "cantidad_registros": cantidad_registros,
+        "scanned": scanned,
+        "skipped_duplicates": skipped_duplicates,
+        "fact_before": fact_count,
+        "fact_after": fact_after,
         "dimensions": dim_appends,
         "elapsed_seconds": elapsed,
+        "fast_path": True,
+        "dashboard_deferred": True,
+        "incremental_batch_key": batch_key,
         "message": (
-            f"ETL incremental: +{n_new} hechos (fact {len(fact_df)} → {len(updated_fact)}) "
-            f"en {elapsed}s."
-        ),
+            f"Carga incremental rápida: +{n_new} hechos en {elapsed}s "
+            f"(total {fact_after:,}, límite {cantidad_registros:,}). "
+            f"Dashboard: contador actualizado; agregaciones completas en segundo plano."
+        ).replace(",", "."),
     }

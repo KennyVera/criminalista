@@ -7,7 +7,6 @@ django-cors-headers==4.9.0
 django-redis
 djangorestframework==3.17.1
 duckdb
-Faker==40.18.0
 httpx==0.28.1
 pandas
 psycopg2-binary==2.9.12

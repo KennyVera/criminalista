@@ -5,7 +5,11 @@ from typing import Any
 import pandas as pd
 
 from packages.autenticacion_seguridad.services.passwords import hash_password
-from packages.shared.minio_transactional import TransactionalMinioStore, utc_now_iso
+from packages.shared.minio_transactional import (
+    TRANSACTIONAL_COLLECTIONS,
+    TransactionalMinioStore,
+    utc_now_iso,
+)
 
 # Credenciales por defecto (desarrollo)
 DEFAULT_ADMIN_EMAIL = "kennyvera43@gmail.com"
@@ -107,23 +111,22 @@ def seed_auth_data(
         },
     )
 
+    from packages.autenticacion_seguridad.services.permisos_operativos_service import (
+        PermisosOperativosService,
+    )
+    from packages.estructura_policial.services.seed import seed_estructura_policial
+
+    perm_summary = PermisosOperativosService(store).seed_defaults(reset_relations=True)
+    org_summary = seed_estructura_policial(store, reset=True)
+
     return {
         "roles": len(roles),
         "usuarios": len(usuarios),
+        "permisos": perm_summary,
+        "estructura_policial": org_summary,
         "credentials": _default_credentials_payload(),
         "minio_prefix": store.prefix,
-        "tables": [
-            "app_roles",
-            "app_usuarios",
-            "app_sesiones_activas",
-            "app_involucrados",
-            "app_caso_involucrado",
-            "app_evidencias",
-            "app_asignaciones",
-            "app_casos_operativos",
-            "app_expediente_bitacora",
-            "app_audit_logs",
-        ],
+        "tables": list(TRANSACTIONAL_COLLECTIONS),
     }
 
 

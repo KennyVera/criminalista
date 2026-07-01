@@ -1,27 +1,24 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  Sparkles,
   Database,
   CheckCircle2,
   AlertCircle,
   Loader2,
+  RefreshCw,
   Layers,
 } from 'lucide-react'
 import { api } from '../api/client'
-import { Button, Card, Badge } from '../components/ui'
+import { Button, Card, Badge, Input } from '../components/ui'
 
-const MAX_TOTAL = 500_000
 const POLL_MS = 1500
-const PREVIEW_MAX = 8
-/** Requisito académico: +100k históricos hacia ~300k */
-const REALISTIC_100K = 100_000
+const MIN_BATCH = 1
+const MAX_BATCH = 300_000
+const DEFAULT_BATCH = 50_000
 
 const PHASE = {
   form: 'form',
-  generating: 'generating',
-  preview: 'preview',
-  etl: 'etl',
-  etlDone: 'etlDone',
+  syncing: 'syncing',
+  done: 'done',
   error: 'error',
 }
 
@@ -45,51 +42,57 @@ function ProgressBar({ percent, label }) {
 }
 
 export default function GenerateDataPage() {
-  const [count, setCount] = useState(50)
   const [phase, setPhase] = useState(PHASE.form)
-  const [progress, setProgress] = useState({
-    done: 0,
-    total: 0,
-    created: 0,
-    errors: 0,
-    percent: 0,
-  })
-  const [previewRows, setPreviewRows] = useState([])
-  const [genSummary, setGenSummary] = useState(null)
-  const [etlResult, setEtlResult] = useState(null)
+  const [stats, setStats] = useState(null)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [syncResult, setSyncResult] = useState(null)
   const [errorMsg, setErrorMsg] = useState(null)
   const [statusHint, setStatusHint] = useState(null)
-  const [etlProgress, setEtlProgress] = useState({ percent: 0, message: '' })
+  const [syncProgress, setSyncProgress] = useState({ percent: 0, message: '' })
+  const [batchSize, setBatchSize] = useState(String(DEFAULT_BATCH))
+  const [batchTouched, setBatchTouched] = useState(false)
   const cancelRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setStatsLoading(true)
+    api
+      .syncPocketBaseStats()
+      .then((data) => {
+        if (!cancelled) setStats(data)
+      })
+      .catch(() => {
+        if (!cancelled) setStats(null)
+      })
+      .finally(() => {
+        if (!cancelled) setStatsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [phase])
+
+  useEffect(() => {
+    if (!stats || batchTouched) return
+    const pending = Math.max(
+      0,
+      Number(stats.pending_estimate ?? stats.pocketbase_crimes_220k - stats.minio_fact_crimes)
+    )
+    const suggested = Math.min(MAX_BATCH, Math.max(MIN_BATCH, pending || DEFAULT_BATCH))
+    setBatchSize(String(suggested))
+  }, [stats, batchTouched])
 
   const reset = () => {
     setPhase(PHASE.form)
-    setProgress({ done: 0, total: 0, created: 0, errors: 0, percent: 0 })
-    setPreviewRows([])
-    setGenSummary(null)
-    setEtlResult(null)
+    setSyncResult(null)
     setErrorMsg(null)
     setStatusHint(null)
-    setEtlProgress({ percent: 0, message: '' })
+    setSyncProgress({ percent: 0, message: '' })
     cancelRef.current = false
   }
 
-  const finishGeneration = (result, total) => {
-    const samples = result.samples || []
-    setPreviewRows(samples.slice(-PREVIEW_MAX))
-    setGenSummary({
-      created: result.raw?.created ?? result.inserted_facts ?? 0,
-      errors: result.raw?.errors ?? 0,
-      total,
-    })
-    setPhase(PHASE.preview)
-  }
-
-  const pollGenerateStatus = (taskId) =>
-    api.generateFakeDataStatus(taskId).catch(() => api.jobStatus(taskId))
-
-  const pollEtlStatus = (taskId) =>
-    api.etlTaskStatus(taskId).catch(() => api.etlStatus(taskId))
+  const pollSyncStatus = (taskId) =>
+    api.etlTaskStatus(taskId).catch(() => api.jobStatus(taskId))
 
   const pollTask = (fetchStatus, onUpdate, onDone) =>
     new Promise((resolve, reject) => {
@@ -119,83 +122,51 @@ export default function GenerateDataPage() {
       tick()
     })
 
-  const handleRealistic100k = async () => {
-    const total = REALISTIC_100K
+  const parsedBatch = Number(batchSize)
+  const batchInvalid =
+    batchSize === '' ||
+    !Number.isFinite(parsedBatch) ||
+    !Number.isInteger(parsedBatch) ||
+    parsedBatch < MIN_BATCH ||
+    parsedBatch > MAX_BATCH
+  const batchErrorMsg = batchInvalid
+    ? `Ingrese un entero entre ${MIN_BATCH.toLocaleString('es-CO')} y ${MAX_BATCH.toLocaleString('es-CO')}.`
+    : null
+
+  const handleSync = async (mode = 'auto') => {
+    if (mode !== 'full' && batchInvalid) return
     cancelRef.current = false
-    setPhase(PHASE.generating)
+    setPhase(PHASE.syncing)
     setErrorMsg(null)
-    setStatusHint('Distribuyendo 100.000 hechos entre 2001 y 2026...')
-    setPreviewRows([])
-    setGenSummary(null)
-    setEtlResult(null)
-    setProgress({ done: 0, total, created: 0, errors: 0, percent: 0 })
+    setSyncResult(null)
+    setSyncProgress({ percent: 0, message: 'Encolando sincronización...' })
+    setStatusHint(
+      mode === 'full'
+        ? 'Reconstrucción completa del modelo estrella en MinIO.'
+        : 'Extracción por lotes desde PocketBase (solo registros nuevos si aplica).'
+    )
 
     try {
-      setStatusHint('Tarea en segundo plano (lotes de 5.000)...')
-      const queued = await api.generateFakeDataAsync(total, true)
+      const payload = { mode, export_raw_copy: true }
+      if (mode !== 'full') {
+        payload.cantidad_registros = parsedBatch
+      }
+      const queued = await api.syncPocketBase(payload)
       await pollTask(
-        () => pollGenerateStatus(queued.task_id),
+        () => pollSyncStatus(queued.task_id),
         (st) => {
-          setProgress({
-            done: st.done ?? 0,
-            total: st.total ?? total,
-            created: st.created ?? 0,
-            errors: st.errors ?? 0,
-            percent: st.percent ?? 0,
+          setSyncProgress({
+            percent: st.percent ?? (st.status === 'completed' ? 100 : 0),
+            message: st.message || st.phase || 'Procesando...',
           })
-          if (st.last_sample) {
-            setPreviewRows((prev) => [...prev, st.last_sample].slice(-PREVIEW_MAX))
+          if (st.new_count != null) {
+            setStatusHint(`${st.new_count.toLocaleString('es-CO')} registros nuevos detectados`)
           }
         },
         (st) => {
-          finishGeneration(st.result || st, total)
-        }
-      )
-    } catch (err) {
-      setErrorMsg(err.message)
-      setPhase(PHASE.error)
-    }
-  }
-
-  const handleGenerate = async () => {
-    const total = Math.min(MAX_TOTAL, Math.max(1, Number(count) || 0))
-    cancelRef.current = false
-    setPhase(PHASE.generating)
-    setErrorMsg(null)
-    setStatusHint(null)
-    setPreviewRows([])
-    setGenSummary(null)
-    setEtlResult(null)
-    setProgress({ done: 0, total, created: 0, errors: 0, percent: 0 })
-
-    try {
-      setStatusHint('Tarea en segundo plano (lotes de 5.000, sin bloquear el navegador)...')
-      const queued = await api.generateFakeDataAsync(total)
-      await pollTask(
-        () => pollGenerateStatus(queued.task_id),
-        (st) => {
-          setStatusHint(
-            st.status === 'pending' || st.status === 'queued'
-              ? 'En cola / iniciando...'
-              : null
-          )
-          setProgress({
-            done: st.done ?? 0,
-            total: st.total ?? total,
-            created: st.created ?? 0,
-            errors: st.errors ?? 0,
-            percent: st.percent ?? 0,
-          })
-          if (st.last_sample) {
-            setPreviewRows((prev) => {
-              const next = [...prev, st.last_sample]
-              return next.slice(-PREVIEW_MAX)
-            })
-          }
-        },
-        (st) => {
-          const result = st.result || st
-          finishGeneration(result, total)
+          setSyncResult(st.result || st)
+          setSyncProgress({ percent: 100, message: 'Completado' })
+          setPhase(PHASE.done)
         }
       )
       if (cancelRef.current) reset()
@@ -205,46 +176,27 @@ export default function GenerateDataPage() {
     }
   }
 
-  const handleFeedDimensions = async () => {
-    setPhase(PHASE.etl)
-    setErrorMsg(null)
-    setEtlProgress({ percent: 0, message: 'Encolando ETL...' })
-    try {
-      const queued = await api.runEtlToMinioAsync()
-      await pollTask(
-        () => pollEtlStatus(queued.task_id),
-        (st) => {
-          setEtlProgress({
-            percent: st.percent ?? (st.status === 'completed' ? 100 : 0),
-            message: st.message || st.phase || 'Procesando...',
-          })
-        },
-        (st) => {
-          setEtlResult(st.result || st)
-          setEtlProgress({ percent: 100, message: 'Completado' })
-          setPhase(PHASE.etlDone)
-        }
-      )
-    } catch (err) {
-      setErrorMsg(err.message)
-      setPhase(PHASE.preview)
-    }
-  }
+  const recommendedMode = stats?.recommended_mode || 'auto'
+  const modeLabel =
+    recommendedMode === 'incremental'
+      ? 'incremental (solo nuevos)'
+      : 'completo (primera carga o reconstrucción)'
 
   return (
     <section className="mx-auto max-w-4xl space-y-6">
       <header className="border-b border-slate-200/80 pb-6">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-indigo-600 text-white shadow-lg shadow-brand-600/25">
-            <Sparkles className="h-6 w-6" />
+            <RefreshCw className="h-6 w-6" />
           </div>
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-              Generar datos ficticios
+              Sincronizar datos desde PocketBase
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Faker inserta registros en <strong className="text-slate-700">crimes_220k</strong>{' '}
-              (PocketBase). Opcionalmente actualiza dimensiones y hechos en MinIO.
+              Extrae <strong className="text-slate-700">crimes_220k</strong> por lotes y carga el
+              modelo analítico en <strong className="text-slate-700">MinIO</strong> (Parquet
+              consolidado + tablas resumen para el dashboard).
             </p>
           </div>
         </div>
@@ -252,30 +204,49 @@ export default function GenerateDataPage() {
 
       {(phase === PHASE.form || phase === PHASE.error) && (
         <Card className="border-brand-200/40 bg-gradient-to-br from-brand-50/20 to-white">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleGenerate()
-            }}
-            className="space-y-4"
-          >
-            <label className="block max-w-xs">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Cantidad de registros
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={MAX_TOTAL}
-                value={count}
-                onChange={(e) => setCount(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-              />
-              <span className="mt-1.5 block text-xs leading-relaxed text-slate-500">
-                La generación corre en segundo plano (lotes de 5.000, inserción paralela). Hasta{' '}
-                {MAX_TOTAL.toLocaleString('es-CO')} registros sin bloquear el navegador.
-              </span>
-            </label>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200/80 bg-white/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Estado del dataset
+              </p>
+              {statsLoading ? (
+                <p className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Consultando PocketBase y MinIO...
+                </p>
+              ) : stats ? (
+                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-slate-500">PocketBase crimes_220k</dt>
+                    <dd className="font-semibold text-slate-900">
+                      {Number(stats.pocketbase_crimes_220k).toLocaleString('es-CO')} registros
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">MinIO fact_crimes</dt>
+                    <dd className="font-semibold text-slate-900">
+                      {Number(stats.minio_fact_crimes).toLocaleString('es-CO')} hechos
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="mt-2 text-sm text-amber-700">
+                  No se pudo leer el estado. Verifica que PocketBase esté en ejecución.
+                </p>
+              )}
+              {!statsLoading && stats && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Modo recomendado: <strong>{modeLabel}</strong>
+                  {stats.pending_estimate > 0 && (
+                    <>
+                      {' '}
+                      · Pendientes estimados:{' '}
+                      <strong>{Number(stats.pending_estimate).toLocaleString('es-CO')}</strong>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
 
             {phase === PHASE.error && errorMsg && (
               <div className="flex items-start gap-3 rounded-xl border border-red-200/80 bg-red-50/90 p-3 text-sm text-red-800">
@@ -284,45 +255,69 @@ export default function GenerateDataPage() {
               </div>
             )}
 
+            <div className="space-y-2">
+              <label htmlFor="batch-size" className="block text-sm font-semibold text-slate-800">
+                Cantidad de registros a procesar
+              </label>
+              <Input
+                id="batch-size"
+                type="number"
+                min={MIN_BATCH}
+                max={MAX_BATCH}
+                step={1}
+                inputMode="numeric"
+                value={batchSize}
+                onChange={(e) => {
+                  setBatchTouched(true)
+                  setBatchSize(e.target.value)
+                }}
+                aria-invalid={batchInvalid}
+                aria-describedby={batchErrorMsg ? 'batch-size-error' : undefined}
+                className={batchInvalid ? 'border-red-300 ring-red-200' : ''}
+              />
+              {batchErrorMsg ? (
+                <p id="batch-size-error" className="text-sm text-red-600">
+                  {batchErrorMsg}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Máximo por ejecución: {MAX_BATCH.toLocaleString('es-CO')} registros nuevos
+                  (sin duplicados).
+                </p>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-3">
-              <Button type="submit">
-                <Sparkles className="h-4 w-4" />
-                Generar registros
-              </Button>
               <Button
                 type="button"
-                variant="secondary"
-                onClick={(e) => {
-                  e.preventDefault()
-                  handleRealistic100k()
-                }}
+                onClick={() => handleSync('auto')}
+                disabled={batchInvalid}
               >
+                <RefreshCw className="h-4 w-4" />
+                Sincronizar / Extraer datos
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => handleSync('full')}>
                 <Layers className="h-4 w-4" />
-                +100k históricos (~300k)
+                Reconstruir completo
               </Button>
             </div>
-            <p className="text-xs text-slate-500">
-              El botón histórico reparte fechas entre 2001 y 2026 para que las tendencias
-              delictivas del dashboard se vean continuas. Después ejecuta ETL a MinIO.
+            <p className="text-xs leading-relaxed text-slate-500">
+              La sincronización corre en segundo plano (Celery o hilo daemon) sin bloquear el
+              navegador. Extrae por paginación desde PocketBase, transforma al modelo estrella y
+              actualiza MinIO + resumen del dashboard.
             </p>
-          </form>
+          </div>
         </Card>
       )}
 
-      {phase === PHASE.generating && (
+      {phase === PHASE.syncing && (
         <Card>
           <div className="mb-4 flex items-center gap-3 rounded-xl bg-brand-50/50 px-4 py-3">
             <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
-            <p className="font-medium text-slate-800">Generando datos con Faker...</p>
+            <p className="font-medium text-slate-800">Extrayendo y cargando datos...</p>
           </div>
-          <ProgressBar
-            percent={progress.percent}
-            label={`${progress.done} / ${progress.total} registros`}
-          />
-          <p className="mt-3 text-sm text-emerald-600">Creados: {progress.created}</p>
-          {statusHint && (
-            <p className="mt-2 text-sm text-slate-500">{statusHint}</p>
-          )}
+          <ProgressBar percent={syncProgress.percent} label={syncProgress.message || 'Progreso ETL'} />
+          {statusHint && <p className="mt-3 text-sm text-slate-500">{statusHint}</p>}
           <Button
             variant="secondary"
             className="mt-4"
@@ -331,137 +326,77 @@ export default function GenerateDataPage() {
               cancelRef.current = true
             }}
           >
-            Cancelar
+            Cancelar seguimiento
           </Button>
         </Card>
       )}
 
-      {(phase === PHASE.preview || phase === PHASE.etl || phase === PHASE.etlDone) && (
-        <>
-          <Card className="overflow-hidden p-0">
-            <div className="border-b border-emerald-100 bg-emerald-50/50 px-5 py-4">
+      {phase === PHASE.done && syncResult && (
+        <Card className="overflow-hidden border-emerald-200/80 bg-gradient-to-br from-emerald-50/60 to-white">
+          <div className="flex items-start gap-4 p-5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+              <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+            </div>
+            <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <p className="font-semibold text-slate-900">
-                  {genSummary?.created} registros insertados en crimes_220k
-                </p>
-                <Badge tone="green">PocketBase</Badge>
+                <p className="font-semibold text-emerald-900">Sincronización completada</p>
+                {syncResult.sync_mode && (
+                  <Badge tone="green">{syncResult.sync_mode}</Badge>
+                )}
               </div>
-            </div>
-
-            <div className="p-5">
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Vista previa (ultimos {previewRows.length} generados)
-            </h3>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50/80">
-                  <tr>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Caso</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Tipo</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Bloque</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Distrito</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Fecha</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Arresto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewRows.map((row) => (
-                    <tr key={row.id || row.pb_id} className="border-b border-slate-100 transition hover:bg-slate-50/60">
-                      <td className="px-4 py-3 font-medium text-slate-900">{row.case_number}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.primary_type}</td>
-                      <td className="max-w-[160px] truncate px-4 py-3 text-slate-600">{row.block}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.district}</td>
-                      <td className="max-w-[140px] truncate px-4 py-3 text-xs text-slate-500">{row.date}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.arrest}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            </div>
-          </Card>
-
-          {errorMsg && phase === PHASE.preview && (
-            <div className="flex items-start gap-3 rounded-xl border border-red-200/80 bg-red-50/90 p-3 text-sm text-red-800">
-              <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
-              <p>{errorMsg}</p>
-            </div>
-          )}
-
-          {phase === PHASE.preview && (
-            <Card className="overflow-hidden border-brand-200/60 bg-gradient-to-br from-brand-50/40 to-white">
-              <div className="flex items-start gap-4 p-5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-600">
-                  <Layers className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-slate-900">
-                    Deseas alimentar tus tablas de Dimensiones?
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Si eliges Si, se ejecuta el ETL hacia MinIO (dimensiones + fact_crimes).
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <Button type="button" onClick={handleFeedDimensions}>
-                      <Database className="h-4 w-4" />
-                      Si, actualizar MinIO
-                    </Button>
-                    <Button variant="secondary" type="button" onClick={reset}>
-                      No, solo raw en PocketBase
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {phase === PHASE.etl && (
-            <Card>
-              <div className="mb-4 flex items-center gap-3 rounded-xl bg-brand-50/50 px-4 py-3">
-                <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
-                <div>
-                  <p className="font-medium text-slate-900">Alimentando dimensiones en MinIO...</p>
-                  <p className="text-sm text-slate-500">
-                    {etlProgress.message ||
-                      'Extraccion paralela, transformacion vectorizada y subida Parquet.'}
-                  </p>
-                </div>
-              </div>
-              <ProgressBar
-                percent={etlProgress.percent}
-                label="Progreso ETL"
-              />
-            </Card>
-          )}
-
-          {phase === PHASE.etlDone && etlResult && (
-            <Card className="overflow-hidden border-emerald-200/80 bg-gradient-to-br from-emerald-50/60 to-white">
-              <div className="flex items-start gap-4 p-5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
-                  <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-emerald-900">MinIO actualizado</p>
-                  <p className="mt-1 text-sm text-emerald-800">{etlResult.message}</p>
-                  {etlResult.collections && (
-                    <ul className="mt-3 grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
-                      {Object.entries(etlResult.collections).map(([name, n]) => (
-                        <li key={name}>
-                          <span className="font-medium">{name}:</span>{' '}
-                          {Number(n).toLocaleString('es-CO')} filas
-                        </li>
-                      ))}
-                    </ul>
+              <p className="mt-1 text-sm text-emerald-800">{syncResult.message}</p>
+              {syncResult.new_records != null && (
+                <p className="mt-2 text-sm text-slate-700">
+                  Registros nuevos procesados:{' '}
+                  <strong>{Number(syncResult.new_records).toLocaleString('es-CO')}</strong>
+                  {syncResult.cantidad_registros != null && (
+                    <span className="text-slate-500">
+                      {' '}
+                      (límite: {Number(syncResult.cantidad_registros).toLocaleString('es-CO')})
+                    </span>
                   )}
-                  <Button variant="secondary" className="mt-4" type="button" onClick={reset}>
-                    Generar mas registros
-                  </Button>
-                </div>
+                </p>
+              )}
+              {syncResult.skipped_duplicates != null && syncResult.skipped_duplicates > 0 && (
+                <p className="text-sm text-slate-600">
+                  Duplicados omitidos:{' '}
+                  <strong>{Number(syncResult.skipped_duplicates).toLocaleString('es-CO')}</strong>
+                </p>
+              )}
+              {syncResult.fact_before != null && syncResult.fact_after != null && (
+                <p className="text-sm text-slate-700">
+                  Hechos: {Number(syncResult.fact_before).toLocaleString('es-CO')} →{' '}
+                  {Number(syncResult.fact_after).toLocaleString('es-CO')}
+                </p>
+              )}
+              {syncResult.collections && (
+                <ul className="mt-3 grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
+                  {Object.entries(syncResult.collections).map(([name, n]) => (
+                    <li key={name}>
+                      <span className="font-medium">{name}:</span>{' '}
+                      {Number(n).toLocaleString('es-CO')} filas
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {syncResult.dimensions && (
+                <ul className="mt-3 grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
+                  {Object.entries(syncResult.dimensions).map(([name, meta]) => (
+                    <li key={name}>
+                      <span className="font-medium">{name}:</span> +{meta.new} (total {meta.total})
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="secondary" type="button" onClick={reset}>
+                  <Database className="h-4 w-4" />
+                  Nueva sincronización
+                </Button>
               </div>
-            </Card>
-          )}
-        </>
+            </div>
+          </div>
+        </Card>
       )}
     </section>
   )

@@ -16,6 +16,9 @@ from core.migration.postgres_config import (
 from core.migration.serializers import pg_value_to_pb
 from core.services.pocketbase import PocketBaseClient, PocketBaseError
 
+# Tamaño de lote hacia PocketBase (/api/batches) en migraciones masivas.
+MIGRATION_PB_BATCH = 500
+
 
 class PostgresMigrator:
     """
@@ -220,64 +223,118 @@ class PostgresMigrator:
 
         return created, skipped, errors
 
-    def migrate_crimes_220k(self) -> tuple[int, int, int]:
+    def _load_existing_crime_ids(self) -> set[str]:
+        """IDs ya presentes en PocketBase crimes_220k (campo id de negocio)."""
         existing: set[str] = set()
-        if self.skip_existing:
-            page = 1
-            while True:
-                data = self.pb.list_records("crimes_220k", page=page, per_page=500, sort="@rowid")
-                for item in data.get("items", []):
-                    if item.get("id"):
-                        existing.add(str(item["id"]))
-                if page >= data.get("totalPages", 1):
-                    break
-                page += 1
+        self.log("  Cargando IDs existentes en PocketBase crimes_220k…")
+        t0 = time.time()
+        for item in self.pb.iter_records("crimes_220k", per_page=500, fields="id"):
+            raw_id = item.get("id")
+            if raw_id is not None and str(raw_id).strip():
+                existing.add(str(raw_id))
+        elapsed = time.time() - t0
+        self.log(f"  IDs en PocketBase: {len(existing):,} ({elapsed:.1f}s)")
+        return existing
 
+    def _row_to_crimes_body(self, row: dict) -> dict:
+        body: dict = {}
+        for pg_col, pb_field in CRIMES_220K_COLUMNS.items():
+            value = pg_value_to_pb(row.get(pg_col))
+            if value is not None:
+                body[pb_field] = value
+        return body
+
+    def _flush_crimes_batch(
+        self,
+        collection: str,
+        bodies: list[dict],
+    ) -> tuple[int, int]:
+        if not bodies:
+            return 0, 0
+        if self.dry_run:
+            return len(bodies), 0
+        created, errors, _ = self.pb.create_records_batch(collection, bodies)
+        return created, errors
+
+    def migrate_crimes_from_postgres(
+        self,
+        pg_table: str,
+        *,
+        limit: int | None = None,
+    ) -> tuple[int, int, int]:
+        """
+        Migra filas de una tabla plana Postgres (crimes_220k, public.crimes_2m, …)
+        hacia PocketBase crimes_220k, omitiendo IDs ya presentes.
+
+        limit: máximo de registros NUEVOS a crear (None = sin tope).
+        """
+        existing = self._load_existing_crime_ids() if self.skip_existing else set()
         created = skipped = errors = 0
         pg_cols = list(CRIMES_220K_COLUMNS.keys())
         col_list = ", ".join(pg_cols)
-        query = f"SELECT {col_list} FROM crimes_220k"
+        query = f"SELECT {col_list} FROM {pg_table} ORDER BY id"
+
+        total_pg = self._pg_count(pg_table)
+        if total_pg is not None:
+            self.log(f"  Filas en Postgres ({pg_table}): {total_pg:,}")
+        if limit:
+            self.log(f"  Objetivo: hasta {limit:,} registros nuevos en PocketBase")
+
+        pending: list[dict] = []
+        processed = 0
+        t0 = time.time()
 
         with self.connect_postgres() as conn:
-            with conn.cursor(name="mig_crimes_220k", cursor_factory=RealDictCursor) as cur:
+            with conn.cursor(name=f"mig_{pg_table.replace('.', '_')}", cursor_factory=RealDictCursor) as cur:
                 cur.itersize = self.batch_size
                 cur.execute(query)
-                processed = 0
-                t0 = time.time()
                 while True:
+                    if limit is not None and created >= limit:
+                        break
                     rows = cur.fetchmany(self.batch_size)
                     if not rows:
                         break
                     for row in rows:
+                        if limit is not None and created >= limit:
+                            break
+                        processed += 1
                         row_id = row.get("id")
-                        if row_id is not None and str(row_id) in existing:
+                        row_key = str(row_id) if row_id is not None else ""
+                        if row_key and row_key in existing:
                             skipped += 1
                             continue
 
-                        body = {}
-                        for pg_col, pb_field in CRIMES_220K_COLUMNS.items():
-                            value = pg_value_to_pb(row.get(pg_col))
-                            if value is not None:
-                                body[pb_field] = value
+                        pending.append(self._row_to_crimes_body(row))
+                        if row_key:
+                            existing.add(row_key)
 
-                        if self.dry_run:
-                            created += 1
-                        else:
-                            try:
-                                self.pb.create_record("crimes_220k", body)
-                                created += 1
-                                if row_id is not None:
-                                    existing.add(str(row_id))
-                            except PocketBaseError:
-                                errors += 1
+                        if len(pending) >= MIGRATION_PB_BATCH:
+                            c, e = self._flush_crimes_batch("crimes_220k", pending)
+                            created += c
+                            errors += e
+                            pending.clear()
+                            if limit is not None and created >= limit:
+                                break
 
-                        processed += 1
                         if processed % 10000 == 0:
                             elapsed = time.time() - t0
                             rate = processed / elapsed if elapsed else 0
                             self.log(
-                                f"  crimes_220k: {processed} filas "
-                                f"({rate:.0f}/s) creados={created} errores={errors}"
+                                f"  {pg_table}: {processed:,} leídas "
+                                f"({rate:.0f}/s) creados={created:,} omitidos={skipped:,} errores={errors}"
                             )
 
+        if pending and (limit is None or created < limit):
+            if limit is not None:
+                pending = pending[: max(0, limit - created)]
+            c, e = self._flush_crimes_batch("crimes_220k", pending)
+            created += c
+            errors += e
+
         return created, skipped, errors
+
+    def migrate_crimes_220k(self) -> tuple[int, int, int]:
+        return self.migrate_crimes_from_postgres("crimes_220k")
+
+    def migrate_crimes_2m(self, limit: int = 1_000_000) -> tuple[int, int, int]:
+        return self.migrate_crimes_from_postgres("public.crimes_2m", limit=limit)

@@ -6,6 +6,7 @@ export const adminApi = {
   roles: () => api.request(`${B}/roles/`),
   users: () => api.request(`${B}/usuarios/`),
   createUser: (body) => api.request(`${B}/usuarios/`, { method: 'POST', body: JSON.stringify(body) }),
+  generatePlaca: (fkRol) => api.request(`${B}/usuarios/generar-placa/?fk_rol=${fkRol}`),
   getUser: (id) => api.request(`${B}/usuarios/${id}/`),
   updateUser: (id, body) =>
     api.request(`${B}/usuarios/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),

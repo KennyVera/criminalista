@@ -23,6 +23,14 @@ from packages.autenticacion_seguridad.services.session_service import (
     SESSION_CLOSED_BY_ADMIN_MSG,
     SessionService,
 )
+from packages.autenticacion_seguridad.services.bitacora_acceso_service import (
+    TIPO_BLOQUEO,
+    TIPO_LOGIN,
+    TIPO_LOGIN_FALLIDO,
+    TIPO_LOGOUT,
+    TIPO_MFA_ENVIADO,
+    BitacoraAccesoService,
+)
 from packages.shared.minio_transactional import TransactionalMinioStore, utc_now_iso
 
 
@@ -45,6 +53,7 @@ class AuthService:
     def __init__(self, store: TransactionalMinioStore | None = None) -> None:
         self.store = store or TransactionalMinioStore()
         self.sessions = SessionService(self.store)
+        self.bitacora = BitacoraAccesoService(self.store)
 
     @staticmethod
     def _normalize_users_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -152,6 +161,14 @@ class AuthService:
         max_attempts = get_login_max_attempts()
         user = self.get_user_by_email(email)
         if not user:
+            self.bitacora.record(
+                tipo_evento=TIPO_LOGIN_FALLIDO,
+                exito=False,
+                email=email,
+                direccion_ip=ip,
+                user_agent=user_agent,
+                detalle="Usuario no registrado",
+            )
             self._audit(
                 fk_usuario=None,
                 accion="LOGIN_FAILED",
@@ -173,6 +190,15 @@ class AuthService:
 
         if not verify_password(password, str(user["password_hash"])):
             failures = self._record_failed_login(user_id)
+            self.bitacora.record(
+                tipo_evento=TIPO_LOGIN_FALLIDO,
+                exito=False,
+                fk_usuario=user_id,
+                email=str(user.get("email", "")),
+                direccion_ip=ip,
+                user_agent=user_agent,
+                detalle=f"Contraseña incorrecta ({failures}/{max_attempts})",
+            )
             self._audit(
                 fk_usuario=user_id,
                 accion="LOGIN_FAILED",
@@ -181,6 +207,15 @@ class AuthService:
             )
             if failures >= max_attempts:
                 self._lock_account(user_id)
+                self.bitacora.record(
+                    tipo_evento=TIPO_BLOQUEO,
+                    exito=False,
+                    fk_usuario=user_id,
+                    email=str(user.get("email", "")),
+                    direccion_ip=ip,
+                    user_agent=user_agent,
+                    detalle=f"Cuenta bloqueada tras {max_attempts} intentos",
+                )
                 self._audit(
                     fk_usuario=user_id,
                     accion="ACCOUNT_LOCKED",
@@ -251,11 +286,31 @@ class AuthService:
             ip=ip,
             tabla="app_sesiones_activas",
         )
+        self.bitacora.record(
+            tipo_evento=TIPO_LOGIN,
+            exito=True,
+            fk_usuario=int(user["id_usuario"]),
+            email=str(user.get("email", "")),
+            direccion_ip=ip,
+            user_agent=user_agent,
+            detalle=f"Inicio de sesión ({nombre_rol})",
+        )
+
+        permisos = []
+        try:
+            from packages.autenticacion_seguridad.services.permisos_operativos_service import (
+                PermisosOperativosService,
+            )
+
+            permisos = PermisosOperativosService(self.store).list_rol_permisos(fk_rol)
+        except Exception:
+            pass
 
         return {
             "access_token": token,
             "token_type": "Bearer",
             "user": self._public_user(user, nombre_rol),
+            "permisos": permisos,
         }
 
     # ── Segundo factor (2FA por correo) ──
@@ -294,6 +349,14 @@ class AuthService:
             detalle=f"Código 2FA enviado a {user['email']} (rol {nombre_rol})",
             ip=ip,
             tabla="app_usuarios",
+        )
+        self.bitacora.record(
+            tipo_evento=TIPO_MFA_ENVIADO,
+            exito=True,
+            fk_usuario=int(user["id_usuario"]),
+            email=str(user.get("email", "")),
+            direccion_ip=ip,
+            detalle=f"Código 2FA enviado (rol {nombre_rol})",
         )
 
         return {
@@ -396,7 +459,15 @@ class AuthService:
         nombre_rol = roles.get(int(user["fk_rol"]), "Sin rol")
         return self._start_login_mfa(user, nombre_rol, ip=ip)
 
-    def logout(self, user_id: int, *, ip: str | None = None, jti: str | None = None) -> None:
+    def logout(
+        self,
+        user_id: int,
+        *,
+        ip: str | None = None,
+        jti: str | None = None,
+        email: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
         if jti:
             self.sessions.close_session(jti, motivo=MOTIVO_LOGOUT)
         self._audit(
@@ -405,6 +476,15 @@ class AuthService:
             detalle="Cierre de sesión",
             ip=ip,
             tabla="app_sesiones_activas",
+        )
+        self.bitacora.record(
+            tipo_evento=TIPO_LOGOUT,
+            exito=True,
+            fk_usuario=user_id,
+            email=email or "",
+            direccion_ip=ip,
+            user_agent=user_agent,
+            detalle="Cierre de sesión",
         )
 
     def session_status_from_token(self, token: str) -> dict[str, Any]:

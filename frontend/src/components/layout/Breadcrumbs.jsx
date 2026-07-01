@@ -21,7 +21,7 @@ const LABELS = {
   catalogos: 'Catálogos',
   zonas: 'Zonas',
   'estado-sistema': 'Estado del sistema',
-  'generar-datos': 'Generación de datos',
+  'generar-datos': 'Sincronización de datos',
 }
 
 export default function Breadcrumbs({ className }) {

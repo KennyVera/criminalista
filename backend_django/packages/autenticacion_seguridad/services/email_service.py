@@ -63,6 +63,38 @@ def send_login_mfa_code(*, to_email: str, code: str, nombre: str, minutes: int =
     )
 
 
+def send_new_user_credentials(
+    *,
+    to_email: str,
+    nombre: str,
+    password: str,
+    numero_placa: str,
+    nombre_rol: str,
+    login_url: str,
+) -> None:
+    """Envía credenciales de acceso al usuario recién registrado por un administrador."""
+    subject = "CrimeTrack — Acceso a tu cuenta"
+    body = (
+        f"Hola {nombre},\n\n"
+        f"Un administrador creó tu cuenta en CrimeTrack Analytics.\n\n"
+        f"Rol asignado: {nombre_rol}\n"
+        f"Número de placa: {numero_placa}\n"
+        f"Correo de acceso: {to_email}\n"
+        f"Contraseña temporal: {password}\n\n"
+        f"Ingresa en: {login_url}\n\n"
+        f"Por seguridad, cambia tu contraseña después del primer inicio de sesión.\n\n"
+        f"— Equipo CrimeTrack Soporte\n"
+        f"{getattr(settings, 'DEFAULT_FROM_EMAIL', '')}"
+    )
+    send_mail(
+        subject,
+        body,
+        settings.DEFAULT_FROM_EMAIL,
+        [to_email],
+        fail_silently=False,
+    )
+
+
 def send_backup_failure_alert(
     *,
     to_email: str,

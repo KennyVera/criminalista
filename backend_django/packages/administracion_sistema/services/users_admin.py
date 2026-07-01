@@ -1,15 +1,25 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pandas as pd
 
+from packages.autenticacion_seguridad.services.email_validation import validate_email_address
 from packages.autenticacion_seguridad.services.auth_service import AuthService
 from packages.autenticacion_seguridad.services.passwords import hash_password
 from packages.autenticacion_seguridad.services.security_policy import (
     validate_password_strength,
 )
 from packages.shared.minio_transactional import TransactionalMinioStore, utc_now_iso
+
+ROLE_PLACA_PREFIX: dict[int, str] = {
+    1: "CPD",
+    2: "CPD",
+    3: "CPD",
+    4: "OF",
+    5: "AN",
+}
 
 
 class UsersAdminService:
@@ -35,14 +45,20 @@ class UsersAdminService:
         return self._public(row.iloc[0].to_dict(), self._roles_map())
 
     def create_user(self, data: dict[str, Any]) -> dict[str, Any]:
-        email = str(data["email"]).strip().lower()
+        email = validate_email_address(str(data["email"]))
         if self._email_exists(email):
             raise ValueError("El correo ya está registrado")
+        fk_rol = int(data["fk_rol"])
+        numero_placa = str(data.get("numero_placa") or "").strip().upper()
+        if not numero_placa:
+            numero_placa = self.generate_numero_placa(fk_rol)
+        else:
+            self._assert_placa_available(numero_placa)
         password = data.get("password") or "CrimeTrack2026!"
         validate_password_strength(str(password))
         row = {
-            "fk_rol": int(data["fk_rol"]),
-            "numero_placa": str(data["numero_placa"]).strip(),
+            "fk_rol": fk_rol,
+            "numero_placa": numero_placa,
             "nombres": str(data["nombres"]).strip(),
             "apellidos": str(data["apellidos"]).strip(),
             "email": email,
@@ -60,14 +76,18 @@ class UsersAdminService:
         if not mask.any():
             return None
         if "email" in data:
-            email = str(data["email"]).strip().lower()
+            email = validate_email_address(str(data["email"]))
             other = df[(df["email"].str.lower() == email) & (df["id_usuario"] != user_id)]
             if not other.empty:
                 raise ValueError("El correo ya está en uso")
             df.loc[mask, "email"] = email
+        if "numero_placa" in data:
+            placa = str(data["numero_placa"]).strip().upper()
+            current = str(df.loc[mask, "numero_placa"].iloc[0]).strip().upper()
+            if placa != current:
+                raise ValueError("El número de placa no se puede modificar")
         for field in (
             "fk_rol",
-            "numero_placa",
             "nombres",
             "apellidos",
             "estado_cuenta",
@@ -102,6 +122,45 @@ class UsersAdminService:
         if activa:
             payload["intentos_login_fallidos"] = 0
         return self.update_user(user_id, payload)
+
+    def generate_numero_placa(self, fk_rol: int) -> str:
+        fk_rol = int(fk_rol)
+        prefix = ROLE_PLACA_PREFIX.get(fk_rol, "CPD")
+        base = fk_rol * 1000
+        existing = self._existing_placas()
+        for seq in range(1, 10_000):
+            candidate = f"{prefix}-{base + seq}"
+            if candidate not in existing:
+                return candidate
+        raise ValueError("No hay números de placa disponibles para este rol")
+
+    def _existing_placas(self) -> set[str]:
+        df = self._users_df()
+        if df.empty:
+            return set()
+        return {
+            self._normalize_placa(v)
+            for v in df["numero_placa"].astype(str).tolist()
+            if str(v).strip()
+        }
+
+    @staticmethod
+    def _normalize_placa(placa: str) -> str:
+        return re.sub(r"\s+", "", str(placa or "").strip().upper())
+
+    def _assert_placa_available(self, placa: str, exclude_user_id: int | None = None) -> None:
+        normalized = self._normalize_placa(placa)
+        if not normalized:
+            raise ValueError("El número de placa es obligatorio")
+        df = self._users_df()
+        if df.empty:
+            return
+        placas = df["numero_placa"].astype(str).map(self._normalize_placa)
+        mask = placas == normalized
+        if exclude_user_id is not None:
+            mask &= df["id_usuario"] != exclude_user_id
+        if mask.any():
+            raise ValueError("El número de placa ya está asignado a otro usuario")
 
     def _email_exists(self, email: str) -> bool:
         df = self._users_df()

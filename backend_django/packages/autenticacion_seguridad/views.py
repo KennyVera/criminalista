@@ -133,6 +133,8 @@ class LogoutView(APIView):
                 int(user["id_usuario"]),
                 ip=_client_ip(request),
                 jti=str(jti) if jti else None,
+                email=str(user.get("email", "")),
+                user_agent=_user_agent(request),
             )
         return Response({"message": "Sesión cerrada"}, status=status.HTTP_200_OK)
 
@@ -142,7 +144,24 @@ class MeView(APIView):
     permission_classes = [IsAuthenticatedJWT]
 
     def get(self, request):
-        return Response({"user": request.crimetrack_user})
+        user = request.crimetrack_user
+        permisos = []
+        try:
+            from packages.autenticacion_seguridad.services.permisos_operativos_service import (
+                PermisosOperativosService,
+            )
+
+            permisos = PermisosOperativosService().list_rol_permisos(int(user["fk_rol"]))
+        except Exception:
+            pass
+        personal = None
+        try:
+            from packages.estructura_policial.services.personal_service import PersonalPolicialService
+
+            personal = PersonalPolicialService().get_by_usuario(int(user["id_usuario"]))
+        except Exception:
+            pass
+        return Response({"user": user, "permisos": permisos, "personal_policial": personal})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -272,3 +291,72 @@ class SeedAuthView(APIView):
 
         result = seed_auth_data(reset=True)
         return Response(result, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class PermisosListView(APIView):
+    """GET — catálogo de permisos operativos (app_permisos)."""
+
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request):
+        from packages.autenticacion_seguridad.services.permisos_operativos_service import (
+            PermisosOperativosService,
+        )
+
+        return Response({"items": PermisosOperativosService().list_permisos()})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class RolPermisosView(APIView):
+    """GET/PUT permisos asignados a un rol (app_rol_permisos)."""
+
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request, fk_rol: int):
+        from packages.autenticacion_seguridad.services.permisos_operativos_service import (
+            PermisosOperativosService,
+        )
+
+        return Response({"fk_rol": fk_rol, "permisos": PermisosOperativosService().list_rol_permisos(fk_rol)})
+
+    def put(self, request, fk_rol: int):
+        from packages.autenticacion_seguridad.services.permisos_operativos_service import (
+            PermisosOperativosService,
+        )
+
+        codigos = request.data.get("permisos", [])
+        if not isinstance(codigos, list):
+            return Response({"error": "permisos debe ser una lista"}, status=400)
+        try:
+            assigned = PermisosOperativosService().set_rol_permisos(fk_rol, codigos)
+            return Response({"fk_rol": fk_rol, "permisos": assigned})
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class BitacoraAccesoListView(APIView):
+    """GET — bitácora de accesos (login/logout/intentos fallidos)."""
+
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request):
+        from packages.autenticacion_seguridad.services.bitacora_acceso_service import (
+            BitacoraAccesoService,
+        )
+
+        email = request.query_params.get("email")
+        fk = request.query_params.get("fk_usuario")
+        tipo = request.query_params.get("tipo_evento")
+        limit = int(request.query_params.get("limit", 100))
+        return Response(
+            {
+                "items": BitacoraAccesoService().list_events(
+                    email=email,
+                    fk_usuario=int(fk) if fk else None,
+                    tipo_evento=tipo,
+                    limit=limit,
+                )
+            }
+        )

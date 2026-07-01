@@ -162,27 +162,20 @@ export const api = {
   deleteRecord: (slug, id) =>
     request(`/collections/${slug}/records/${id}/`, { method: 'DELETE' }),
   relationOptions: (slug) => request(`/collections/${slug}/options/`),
-  generateFakeDataBatch: (count, workers = 32) =>
-    requestLong('/generate-fake-data/batch/', {
+  syncPocketBaseStats: () => request('/sync/pocketbase/stats/'),
+  syncPocketBase: ({ mode = 'auto', export_raw_copy = true, cantidad_registros } = {}) =>
+    request('/sync/pocketbase/', {
       method: 'POST',
-      body: JSON.stringify({ count, workers }),
-    }, 900000),
-  generateFakeDataRealisticBatch: (count, workers = 32) =>
-    requestLong('/generate-fake-data/realistic/batch/', {
-      method: 'POST',
-      body: JSON.stringify({ count, workers }),
-    }, 900000),
-  generateFakeDataAsync: (count, realistic = false) =>
-    request('/generate-fake-data/async/', {
-      method: 'POST',
-      body: JSON.stringify({ count, realistic }),
+      body: JSON.stringify({
+        mode,
+        export_raw_copy,
+        ...(cantidad_registros != null ? { cantidad_registros } : {}),
+      }),
     }),
-  generateFakeDataStatus: (taskId) =>
-    request(`/generate-fake-data/status/${taskId}/`),
   runEtlToMinioAsync: () =>
-    request('/etl/pb-to-minio/', {
+    request('/sync/pocketbase/', {
       method: 'POST',
-      body: JSON.stringify({ export_raw_copy: true }),
+      body: JSON.stringify({ mode: 'auto', export_raw_copy: true }),
     }),
   etlTaskStatus: (taskId) => request(`/etl/status/${taskId}/`),
   jobStatus: (taskId) => request(`/jobs/status/${taskId}/`),

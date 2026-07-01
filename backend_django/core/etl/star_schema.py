@@ -100,6 +100,11 @@ def run_etl_pb_to_minio(
         if should_cancel and should_cancel():
             raise RuntimeError("ETL cancelado por el usuario.")
 
+    from core.etl.sync_checkpoint import clear_incremental_state
+
+    store = MinioParquetStore()
+    clear_incremental_state(store)
+
     t0 = time.time()
     per_page = int(os.getenv("ETL_PB_PER_PAGE", str(FETCH_PER_PAGE)))
     dim_store = IncrementalDimStore()

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { UserPlus, Pencil, Trash2, UserCheck, UserX } from 'lucide-react'
+import { UserPlus, Pencil, Trash2, UserCheck, UserX, RefreshCw } from 'lucide-react'
 import AdminGuard from '../../components/admin/AdminGuard'
 import AdminPageHeader from '../../components/admin/AdminPageHeader'
 import { adminApi } from '../../api/admin'
 import { Button, Card, Badge, Spinner, PasswordInput } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
+import { EMAIL_HINT, validateEmailAddress } from '../../utils/emailValidation'
 
 const INPUT =
   'w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100'
@@ -22,21 +23,21 @@ const emptyForm = {
 export default function AdminUsersPage() {
   const [items, setItems] = useState([])
   const [roles, setRoles] = useState([])
-  const [permisos, setPermisos] = useState([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(emptyForm)
-  const [selectedPerms, setSelectedPerms] = useState([])
+  const [rolePermsPreview, setRolePermsPreview] = useState([])
+  const [generatingPlaca, setGeneratingPlaca] = useState(false)
+  const [emailError, setEmailError] = useState('')
   const toast = useToast()
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [u, r, p] = await Promise.all([adminApi.users(), adminApi.roles(), adminApi.permisos()])
+      const [u, r] = await Promise.all([adminApi.users(), adminApi.roles()])
       setItems(u.items || [])
       setRoles(r.items || [])
-      setPermisos(p.items || [])
     } catch (e) {
       toast.error('Error', e.message)
     } finally {
@@ -48,15 +49,50 @@ export default function AdminUsersPage() {
     load()
   }, [load])
 
+  useEffect(() => {
+    if (!formOpen || !form.fk_rol) {
+      setRolePermsPreview([])
+      return
+    }
+    let cancelled = false
+    adminApi
+      .rolPermisos(Number(form.fk_rol))
+      .then((rp) => {
+        if (!cancelled) {
+          const list = rp.permisos || []
+          setRolePermsPreview(list.map((p) => p.nombre || p.codigo))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRolePermsPreview([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [formOpen, form.fk_rol])
+
   const openCreate = () => {
     setEditing(null)
     setForm(emptyForm)
-    setSelectedPerms([])
+    setEmailError('')
     setFormOpen(true)
   }
 
-  const openEdit = async (user) => {
+  const generatePlaca = async (fkRol = form.fk_rol) => {
+    setGeneratingPlaca(true)
+    try {
+      const res = await adminApi.generatePlaca(Number(fkRol))
+      setForm((prev) => ({ ...prev, numero_placa: res.numero_placa }))
+    } catch (e) {
+      toast.error('Error', e.message)
+    } finally {
+      setGeneratingPlaca(false)
+    }
+  }
+
+  const openEdit = (user) => {
     setEditing(user)
+    setEmailError('')
     setForm({
       nombres: user.nombres,
       apellidos: user.apellidos,
@@ -66,22 +102,48 @@ export default function AdminUsersPage() {
       password: '',
       estado_cuenta: user.estado_cuenta,
     })
-    const rp = await adminApi.rolPermisos(user.fk_rol)
-    setSelectedPerms(rp.codigos || [])
     setFormOpen(true)
+  }
+
+  const validateFormEmail = (value = form.email) => {
+    const result = validateEmailAddress(value)
+    if (!result.ok) {
+      setEmailError(result.message)
+      return false
+    }
+    setEmailError('')
+    return true
   }
 
   const save = async (e) => {
     e.preventDefault()
+    if (!validateFormEmail()) {
+      return
+    }
+    if (!editing && !form.numero_placa) {
+      toast.error('Error', 'Genera un número de placa antes de guardar')
+      return
+    }
     try {
-      const body = { ...form, fk_rol: Number(form.fk_rol), permisos: selectedPerms }
+      const body = { ...form, fk_rol: Number(form.fk_rol) }
       if (editing) {
+        delete body.numero_placa
         if (!body.password) delete body.password
         await adminApi.updateUser(editing.id_usuario, body)
         toast.success('Éxito', 'Usuario actualizado correctamente')
       } else {
-        await adminApi.createUser(body)
-        toast.success('Éxito', 'Usuario registrado correctamente')
+        const created = await adminApi.createUser(body)
+        if (created.email_sent) {
+          toast.success('Éxito', 'Usuario registrado. Se enviaron las credenciales por correo.')
+        } else {
+          toast.success('Éxito', 'Usuario registrado correctamente')
+          if (created.email_error) {
+            toast.error(
+              'Correo no enviado',
+              'El usuario se creó, pero no se pudieron enviar las credenciales por email.'
+            )
+          }
+        }
       }
       setFormOpen(false)
       load()
@@ -90,17 +152,14 @@ export default function AdminUsersPage() {
     }
   }
 
-  const togglePerm = (code) => {
-    setSelectedPerms((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
-    )
-  }
+  const selectedRoleName =
+    roles.find((r) => Number(r.id_rol) === Number(form.fk_rol))?.nombre_rol || 'Rol'
 
   return (
     <AdminGuard>
       <AdminPageHeader
         title="Registrar y editar usuarios"
-        subtitle="Incluye asignar roles y gestionar permisos (diagrama Administración)"
+        subtitle="Asigna un rol; los permisos se heredan automáticamente del rol (configúralos en Roles y permisos)."
         icon={UserPlus}
       >
         <Button type="button" onClick={openCreate}>
@@ -133,24 +192,60 @@ export default function AdminUsersPage() {
                 className={INPUT}
                 required
               />
-              <input
-                type="email"
-                placeholder="Email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className={INPUT}
-                required
-              />
-              <input
-                placeholder="Número placa"
-                value={form.numero_placa}
-                onChange={(e) => setForm({ ...form, numero_placa: e.target.value })}
-                className={INPUT}
-                required
-              />
+              <div>
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={form.email}
+                  onChange={(e) => {
+                    setForm({ ...form, email: e.target.value })
+                    if (emailError) setEmailError('')
+                  }}
+                  onBlur={(e) => validateFormEmail(e.target.value)}
+                  className={`${INPUT} ${emailError ? 'border-red-300 focus:border-red-500 focus:ring-red-100' : ''}`}
+                  required
+                />
+                {emailError ? (
+                  <p className="mt-1 text-xs text-red-600">{emailError}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">{EMAIL_HINT}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    placeholder="Número placa"
+                    value={form.numero_placa}
+                    readOnly
+                    className={`${INPUT} flex-1 cursor-not-allowed bg-slate-100 text-slate-700`}
+                    required={!editing}
+                  />
+                  {!editing && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => generatePlaca()}
+                      disabled={generatingPlaca}
+                      className="h-[42px] shrink-0 whitespace-nowrap"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${generatingPlaca ? 'animate-spin' : ''}`} />
+                      {form.numero_placa ? 'Regenerar' : 'Generar'}
+                    </Button>
+                  )}
+                </div>
+                {editing && (
+                  <p className="text-xs text-slate-500">La placa no se puede modificar tras el registro.</p>
+                )}
+              </div>
               <select
                 value={form.fk_rol}
-                onChange={(e) => setForm({ ...form, fk_rol: e.target.value })}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    fk_rol: e.target.value,
+                    numero_placa: editing ? form.numero_placa : '',
+                  })
+                }
                 className={INPUT}
               >
                 {roles.map((r) => (
@@ -168,26 +263,33 @@ export default function AdminUsersPage() {
                 autoComplete={editing ? 'new-password' : 'new-password'}
               />
             </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Gestionar permisos
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Permisos heredados del rol
               </p>
-              <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/50 p-3 sm:grid-cols-2">
-                {permisos.map((p) => (
-                  <label
-                    key={p.codigo}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition hover:bg-white"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedPerms.includes(p.codigo)}
-                      onChange={() => togglePerm(p.codigo)}
-                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                    />
-                    <span className="text-slate-700">{p.nombre}</span>
-                  </label>
-                ))}
-              </div>
+              <p className="mt-1 text-sm text-slate-600">
+                El usuario recibirá los permisos definidos para{' '}
+                <strong className="text-slate-800">{selectedRoleName}</strong>. Para modificarlos,
+                usa la pantalla{' '}
+                <a href="/admin/permisos" className="font-medium text-brand-600 hover:underline">
+                  Roles y permisos
+                </a>
+                .
+              </p>
+              {rolePermsPreview.length > 0 ? (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {rolePermsPreview.map((label) => (
+                    <li
+                      key={label}
+                      className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs text-slate-700"
+                    >
+                      {label}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">Cargando permisos del rol…</p>
+              )}
             </div>
             <div className="flex gap-2 border-t border-slate-100 pt-4">
               <Button type="submit">Guardar</Button>

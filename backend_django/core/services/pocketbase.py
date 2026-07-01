@@ -214,6 +214,7 @@ class PocketBaseClient:
         sort: str = "-@rowid",
         filter_query: str | None = None,
         expand: str | None = None,
+        fields: str | None = None,
         skip_total: bool = False,
     ) -> dict:
         params: dict[str, Any] = {"page": page, "perPage": per_page, "sort": sort}
@@ -221,6 +222,8 @@ class PocketBaseClient:
             params["filter"] = filter_query
         if expand:
             params["expand"] = expand
+        if fields:
+            params["fields"] = fields
         if skip_total:
             params["skipTotal"] = 1
         return self._handle(
@@ -238,6 +241,7 @@ class PocketBaseClient:
         per_page: int = 500,
         sort: str = "@rowid",
         filter_query: str | None = None,
+        fields: str | None = None,
         skip_total: bool = True,
     ):
         """Paginación cursor sin COUNT (skipTotal=1 por defecto)."""
@@ -249,6 +253,7 @@ class PocketBaseClient:
                 per_page=per_page,
                 sort=sort,
                 filter_query=filter_query,
+                fields=fields,
                 skip_total=skip_total,
             )
             items = list(data.get("items", []))

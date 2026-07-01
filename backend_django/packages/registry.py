@@ -89,6 +89,14 @@ PACKAGE_REGISTRY: tuple[PackageMeta, ...] = (
         implementado=True,
     ),
     PackageMeta(
+        id="estructura_policial",
+        nombre="Estructura Policial",
+        carpeta="estructura_policial",
+        descripcion="Departamentos, distritos, estaciones, rangos y personal policial operativo.",
+        implementado=True,
+        url_prefix="estructura-policial",
+    ),
+    PackageMeta(
         id="gestion_comercial_b2g",
         nombre="Gestión Comercial B2G y Clientes Institucionales",
         carpeta="gestion_comercial_b2g",

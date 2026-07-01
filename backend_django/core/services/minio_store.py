@@ -69,6 +69,41 @@ class MinioParquetStore:
     def fact_crimes_consolidated_key(self) -> str:
         return f"{self.prefix.rstrip('/')}/fact_crimes/consolidated/latest.parquet"
 
+    def read_consolidated_fact_df(self) -> pd.DataFrame:
+        key = self.fact_crimes_consolidated_key()
+        try:
+            obj = self._client.get_object(Bucket=self.bucket, Key=key)
+            return pd.read_parquet(io.BytesIO(obj["Body"].read()))
+        except Exception:
+            return pd.DataFrame()
+
+    def read_parquet_columns(self, key: str, columns: list[str]) -> pd.DataFrame:
+        """Lee solo columnas indicadas (menos I/O que read_df completo)."""
+        try:
+            import pyarrow.parquet as pq
+
+            obj = self._client.get_object(Bucket=self.bucket, Key=key)
+            table = pq.read_table(io.BytesIO(obj["Body"].read()), columns=columns)
+            return table.to_pandas()
+        except Exception:
+            return pd.DataFrame()
+
+    def read_dim_keys(self, collection: str, key_cols: list[str]) -> pd.DataFrame:
+        from core.etl.sync_checkpoint import read_dim_with_deltas
+
+        cols = list(dict.fromkeys([*key_cols, "id"]))
+        return read_dim_with_deltas(self, collection, cols)
+
+    def has_dim_incremental(self, collection: str) -> bool:
+        from core.etl.sync_checkpoint import list_incremental_dim_keys
+
+        return bool(list_incremental_dim_keys(self, collection))
+
+    def has_incremental_facts(self) -> bool:
+        from core.etl.sync_checkpoint import has_incremental_facts
+
+        return has_incremental_facts(self)
+
     def has_consolidated_facts(self) -> bool:
         try:
             self._client.head_object(

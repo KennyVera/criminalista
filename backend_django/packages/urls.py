@@ -39,4 +39,8 @@ urlpatterns = [
         "reporteria/",
         include("packages.reporteria_exportacion.urls"),
     ),
+    path(
+        "estructura-policial/",
+        include("packages.estructura_policial.urls"),
+    ),
 ]

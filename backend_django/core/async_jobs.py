@@ -14,12 +14,13 @@ from django.core.cache import cache
 PROGRESS_TTL = 3600 * 6
 
 
-def faker_progress_key(task_id: str) -> str:
-    return f"crimetrack:faker:progress:{task_id}"
+def sync_progress_key(task_id: str) -> str:
+    return f"crimetrack:sync:progress:{task_id}"
 
 
 def etl_progress_key(task_id: str) -> str:
-    return f"crimetrack:etl:progress:{task_id}"
+    """Alias histórico (misma clave que sync)."""
+    return sync_progress_key(task_id)
 
 
 def set_job_progress(key: str, payload: dict[str, Any]) -> None:
@@ -28,6 +29,10 @@ def set_job_progress(key: str, payload: dict[str, Any]) -> None:
 
 def get_job_progress(key: str) -> dict[str, Any] | None:
     return cache.get(key)
+
+
+SYNC_CELERY_TASK = "core.sync_pocketbase"
+SYNC_CELERY_TASK_LEGACY = "core.run_etl_to_minio"
 
 
 def _celery_available() -> bool:
@@ -39,6 +44,26 @@ def _celery_available() -> bool:
         return True
     except Exception:
         return False
+
+
+def _celery_worker_has_task(task_name: str) -> bool:
+    """True si algún worker reporta la tarea registrada (evita encolar tareas huérfanas)."""
+    try:
+        from crimetrack.celery import app as celery_app
+
+        inspect = celery_app.control.inspect(timeout=2.0)
+        registered = inspect.registered() or {}
+        return any(task_name in (tasks or []) for tasks in registered.values())
+    except Exception:
+        return False
+
+
+def _celery_sync_ready() -> bool:
+    if not _celery_available():
+        return False
+    return _celery_worker_has_task(SYNC_CELERY_TASK) or _celery_worker_has_task(
+        SYNC_CELERY_TASK_LEGACY
+    )
 
 
 def _run_in_thread(
@@ -67,103 +92,43 @@ def _run_in_thread(
     threading.Thread(target=wrapper, daemon=True).start()
 
 
-def enqueue_faker_job(count: int, *, realistic: bool = False) -> dict[str, Any]:
-    """Encola generación Faker; retorna task_id para polling."""
-    if _celery_available():
+def enqueue_sync_job(
+    *,
+    mode: str = "auto",
+    export_raw_copy: bool = True,
+    per_page: int = 500,
+    cantidad_registros: int | None = None,
+) -> dict[str, Any]:
+    """Encola sincronización PocketBase -> MinIO."""
+    if _celery_sync_ready():
         try:
-            if realistic:
-                from core.tasks import generate_realistic_crimes_task
+            from core.tasks import run_etl_to_minio_task, sync_pocketbase_task
 
-                task = generate_realistic_crimes_task.delay(count)
+            kwargs = {
+                "mode": mode,
+                "export_raw_copy": export_raw_copy,
+                "per_page": per_page,
+                "cantidad_registros": cantidad_registros,
+            }
+            if _celery_worker_has_task(SYNC_CELERY_TASK):
+                task = sync_pocketbase_task.delay(**kwargs)
             else:
-                from core.tasks import generate_fake_crimes_task
-
-                task = generate_fake_crimes_task.delay(count)
+                task = run_etl_to_minio_task.delay(**kwargs)
             return {
                 "task_id": task.id,
                 "status": "queued",
                 "backend": "celery",
-                "total": count,
-                "realistic": realistic,
+                "mode": mode,
             }
         except Exception:
             pass
 
     task_id = str(uuid.uuid4())
-    key = faker_progress_key(task_id)
+    key = sync_progress_key(task_id)
 
     def work() -> None:
-        from core.services.faker_bulk import bulk_insert_crimes_220k
-        from core.services.faker_realistic import bulk_insert_realistic_crimes
-
-        def on_progress(state: dict[str, Any]) -> None:
-            set_job_progress(
-                key,
-                {"status": "running", "task_id": task_id, **state},
-            )
-
-        if realistic:
-            result = bulk_insert_realistic_crimes(count, on_progress=on_progress)
-        else:
-            result = bulk_insert_crimes_220k(count, on_progress=on_progress)
-
-        set_job_progress(
-            key,
-            {
-                "status": "completed" if result.get("success") else "failed",
-                "task_id": task_id,
-                "percent": 100,
-                "done": count,
-                "total": count,
-                "result": result,
-            },
-        )
-
-    _run_in_thread(
-        work,
-        progress_key=key,
-        task_id=task_id,
-        initial={
-            "status": "running",
-            "task_id": task_id,
-            "done": 0,
-            "total": count,
-            "created": 0,
-            "errors": 0,
-            "percent": 0,
-            "realistic": realistic,
-            "backend": "thread",
-        },
-    )
-    return {
-        "task_id": task_id,
-        "status": "queued",
-        "backend": "thread",
-        "total": count,
-        "realistic": realistic,
-    }
-
-
-def enqueue_etl_job(*, export_raw_copy: bool = True) -> dict[str, Any]:
-    if _celery_available():
-        try:
-            from core.tasks import run_etl_to_minio_task
-
-            task = run_etl_to_minio_task.delay(export_raw_copy=export_raw_copy)
-            return {
-                "task_id": task.id,
-                "status": "queued",
-                "backend": "celery",
-            }
-        except Exception:
-            pass
-
-    task_id = str(uuid.uuid4())
-    key = etl_progress_key(task_id)
-
-    def work() -> None:
-        from core.etl.star_schema import run_etl_pb_to_minio
-        from core.services.analytics_service import invalidate_dashboard_cache
+        from core.cache.invalidation import invalidate_after_etl
+        from core.services.pb_sync_service import run_pocketbase_sync
 
         def on_progress(state: dict[str, Any]) -> None:
             set_job_progress(
@@ -178,10 +143,22 @@ def enqueue_etl_job(*, export_raw_copy: bool = True) -> dict[str, Any]:
                 },
             )
 
-        result = run_etl_pb_to_minio(
-            export_raw_copy=export_raw_copy, on_progress=on_progress
+        result = run_pocketbase_sync(
+            mode=mode,
+            export_raw_copy=export_raw_copy,
+            per_page=per_page,
+            cantidad_registros=cantidad_registros,
+            on_progress=on_progress,
         )
-        invalidate_dashboard_cache()
+        defer_dashboard = bool(result.get("dashboard_deferred"))
+        if defer_dashboard:
+            try:
+                from core.tasks import refresh_dashboard_summary_task
+
+                refresh_dashboard_summary_task.delay()
+            except Exception:
+                pass
+        invalidate_after_etl(refresh_dashboard=not defer_dashboard)
         set_job_progress(
             key,
             {
@@ -189,7 +166,8 @@ def enqueue_etl_job(*, export_raw_copy: bool = True) -> dict[str, Any]:
                 "task_id": task_id,
                 "percent": 100,
                 "result": result,
-                "message": result.get("message", "ETL completado"),
+                "message": result.get("message", "Sincronización completada"),
+                "sync_mode": result.get("sync_mode"),
             },
         )
 
@@ -201,19 +179,24 @@ def enqueue_etl_job(*, export_raw_copy: bool = True) -> dict[str, Any]:
             "status": "running",
             "task_id": task_id,
             "percent": 0,
-            "message": "Iniciando ETL...",
+            "message": "Iniciando sincronización...",
             "backend": "thread",
+            "mode": mode,
         },
     )
-    return {"task_id": task_id, "status": "queued", "backend": "thread"}
+    return {"task_id": task_id, "status": "queued", "backend": "thread", "mode": mode}
+
+
+def enqueue_etl_job(*, export_raw_copy: bool = True) -> dict[str, Any]:
+    """Compatibilidad: delega al pipeline de sincronización."""
+    return enqueue_sync_job(mode="auto", export_raw_copy=export_raw_copy)
 
 
 def resolve_job_status(task_id: str) -> dict[str, Any]:
-    """Consulta progreso faker, ETL o Celery AsyncResult."""
-    for key_fn in (faker_progress_key, etl_progress_key):
-        data = get_job_progress(key_fn(task_id))
-        if data:
-            return data
+    """Consulta progreso sync/ETL o Celery AsyncResult."""
+    data = get_job_progress(sync_progress_key(task_id))
+    if data:
+        return data
 
     try:
         from celery.result import AsyncResult
@@ -229,10 +212,17 @@ def resolve_job_status(task_id: str) -> dict[str, Any]:
                 if isinstance(payload, dict):
                     payload.setdefault("task_id", task_id)
                 return payload
+            err = str(result.result)
+            if err.strip("'\"") in (SYNC_CELERY_TASK, SYNC_CELERY_TASK_LEGACY):
+                err = (
+                    "El worker de Celery no tiene registrada la tarea de sincronización. "
+                    "Reinicia el contenedor crimetrack-celery o vuelve a intentar "
+                    "(se usará hilo en segundo plano)."
+                )
             return {
                 "status": "failed",
                 "task_id": task_id,
-                "error": str(result.result),
+                "error": err,
             }
         return {"status": result.state.lower(), "task_id": task_id}
     except Exception:
