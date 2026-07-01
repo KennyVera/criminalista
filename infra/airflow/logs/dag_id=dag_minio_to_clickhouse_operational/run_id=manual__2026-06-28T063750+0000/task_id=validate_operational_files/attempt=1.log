@@ -1,0 +1,29 @@
+[2026-06-28T06:37:55.621+0000] {local_task_job_runner.py:123} INFO - ::group::Pre task execution logs
+[2026-06-28T06:37:55.657+0000] {taskinstance.py:2613} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: dag_minio_to_clickhouse_operational.validate_operational_files manual__2026-06-28T06:37:50+00:00 [queued]>
+[2026-06-28T06:37:55.674+0000] {taskinstance.py:2613} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: dag_minio_to_clickhouse_operational.validate_operational_files manual__2026-06-28T06:37:50+00:00 [queued]>
+[2026-06-28T06:37:55.676+0000] {taskinstance.py:2866} INFO - Starting attempt 1 of 1
+[2026-06-28T06:37:55.700+0000] {taskinstance.py:2889} INFO - Executing <Task(PythonOperator): validate_operational_files> on 2026-06-28 06:37:50+00:00
+[2026-06-28T06:37:55.729+0000] {standard_task_runner.py:104} INFO - Running: ['***', 'tasks', 'run', 'dag_minio_to_clickhouse_operational', 'validate_operational_files', 'manual__2026-06-28T06:37:50+00:00', '--job-id', '7', '--raw', '--subdir', 'DAGS_FOLDER/dag_minio_to_clickhouse_operational.py', '--cfg-path', '/tmp/tmpw634act3']
+[2026-06-28T06:37:55.731+0000] {logging_mixin.py:190} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:70 DeprecationWarning: This process (pid=2447) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2026-06-28T06:37:55.733+0000] {standard_task_runner.py:105} INFO - Job 7: Subtask validate_operational_files
+[2026-06-28T06:37:55.734+0000] {standard_task_runner.py:72} INFO - Started process 2471 to run task
+[2026-06-28T06:37:55.865+0000] {task_command.py:467} INFO - Running <TaskInstance: dag_minio_to_clickhouse_operational.validate_operational_files manual__2026-06-28T06:37:50+00:00 [running]> on host 863e1c870728
+[2026-06-28T06:37:56.064+0000] {taskinstance.py:3132} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='dag_minio_to_clickhouse_operational' AIRFLOW_CTX_TASK_ID='validate_operational_files' AIRFLOW_CTX_EXECUTION_DATE='2026-06-28T06:37:50+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2026-06-28T06:37:50+00:00'
+[2026-06-28T06:37:56.069+0000] {taskinstance.py:731} INFO - ::endgroup::
+[2026-06-28T06:37:56.404+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_incidentes.parquet
+[2026-06-28T06:37:56.426+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_expedientes.parquet
+[2026-06-28T06:37:56.442+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_evidencias.parquet
+[2026-06-28T06:37:56.459+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_audit_logs.parquet
+[2026-06-28T06:37:56.475+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_usuarios.parquet
+[2026-06-28T06:37:56.490+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_roles.parquet
+[2026-06-28T06:37:56.505+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_patrullas.parquet
+[2026-06-28T06:37:56.528+0000] {logging_mixin.py:190} INFO -   [FALTA-OPCIONAL] datasets/transactional/app_casos_operativos.parquet (se tratará como vacía)
+[2026-06-28T06:37:56.546+0000] {logging_mixin.py:190} INFO -   [OK] datasets/transactional/app_asignaciones.parquet
+[2026-06-28T06:37:56.548+0000] {logging_mixin.py:190} INFO - Operativos presentes: 8/9
+[2026-06-28T06:37:56.549+0000] {logging_mixin.py:190} INFO -   [WARN] opcionales no materializadas: app_casos_operativos
+[2026-06-28T06:37:56.550+0000] {python.py:240} INFO - Done. Returned value was: None
+[2026-06-28T06:37:56.575+0000] {taskinstance.py:340} INFO - ::group::Post task execution logs
+[2026-06-28T06:37:56.578+0000] {taskinstance.py:352} INFO - Marking task as SUCCESS. dag_id=dag_minio_to_clickhouse_operational, task_id=validate_operational_files, run_id=manual__2026-06-28T06:37:50+00:00, execution_date=20260628T063750, start_date=20260628T063755, end_date=20260628T063756
+[2026-06-28T06:37:56.639+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[2026-06-28T06:37:56.687+0000] {taskinstance.py:3895} INFO - 9 downstream tasks scheduled from follow-on schedule check
+[2026-06-28T06:37:56.691+0000] {local_task_job_runner.py:245} INFO - ::endgroup::

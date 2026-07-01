@@ -1,13 +1,59 @@
 # CrimeTrack Analytics Corp — Infraestructura local
-# Servicios: MinIO (S3) + PocketBase + Redis + Celery worker
+# Servicios base:        MinIO (S3) + PocketBase + Redis + Celery worker
+# Perfil "analytics":    ClickHouse + Airflow (webserver, scheduler, init) + Postgres metadatos
 #
 # Uso (desde esta carpeta infra/):
-#   docker compose up -d
-#   docker compose --profile workers up -d   # incluye Celery
+#   docker compose up -d                          # base: minio, pocketbase, redis
+#   docker compose --profile workers up -d        # + Celery
+#   docker compose --profile analytics up -d      # + ClickHouse y Airflow
+#   docker compose --profile workers --profile analytics up -d   # todo
 #   docker compose ps
-#   docker compose logs -f celery-worker
+#   docker compose logs -f airflow-webserver
 
 name: crimetrack
+
+# --- Config común de Airflow (LocalExecutor; sin Celery/Redis para Airflow) ---
+x-airflow-common: &airflow-common
+  build:
+    context: ./airflow
+    dockerfile: Dockerfile
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:-airflow}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB:-airflow}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY:-crimetrack-airflow-secret-change-me}
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # --- P2: ejecución secuencial / poca concurrencia (entorno con RAM limitada) ---
+    AIRFLOW__CORE__PARALLELISM: "2"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "1"
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: "1"
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "60"
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "120"
+    # Conexiones que usarán los DAGs (fase 2: MinIO -> ClickHouse)
+    MINIO_ENDPOINT: http://minio:9000
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_change_me}
+    MINIO_BUCKET: ${MINIO_BUCKET:-crimetrack-evidence}
+    MINIO_TRANSACTIONAL_PREFIX: ${MINIO_TRANSACTIONAL_PREFIX:-datasets/transactional}
+    MINIO_STAR_PREFIX: ${MINIO_STAR_PREFIX:-datasets/star}
+    CLICKHOUSE_HOST: clickhouse
+    CLICKHOUSE_PORT: "8123"
+    CLICKHOUSE_NATIVE_PORT: "9000"
+    CLICKHOUSE_USER: ${CLICKHOUSE_USER:-crimetrack}
+    CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-crimetrack_ch_2026}
+    CLICKHOUSE_DB: ${CLICKHOUSE_DB:-crimetrack_analytics}
+    CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB:-crimetrack_analytics}
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  networks:
+    - crimetrack_net
+  profiles: ["analytics"]
 
 services:
   minio:
@@ -81,6 +127,12 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_change_me}
       MINIO_BUCKET: ${MINIO_BUCKET:-crimetrack-evidence}
+      # ClickHouse (capa analítica táctica/estratégica — solo lectura desde backend)
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-crimetrack}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-crimetrack_ch_2026}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB:-crimetrack_analytics}
     volumes:
       - ../backend_django:/app
     depends_on:
@@ -94,6 +146,132 @@ services:
       - crimetrack_net
     command: celery -A crimetrack worker -l info --concurrency=2
 
+  # ---------------------------------------------------------------------------
+  # Capa táctica / estratégica: ClickHouse (perfil "analytics")
+  # MinIO sigue siendo la base operativa; ClickHouse NO la reemplaza.
+  # ---------------------------------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: crimetrack-clickhouse
+    restart: unless-stopped
+    profiles: ["analytics"]
+    # P1: límites de recursos del contenedor (la VM de Docker no se satura)
+    mem_limit: 2g
+    mem_reservation: 1g
+    cpus: "2"
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-crimetrack}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-crimetrack_ch_2026}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-crimetrack_analytics}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"   # HTTP (clientes / Airflow internos usan clickhouse:8123)
+      - "9100:9000"   # nativo TCP (mapeado a 9100 para no chocar con MinIO:9000)
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      # Scripts de init (solo se ejecutan en primer arranque con datadir vacío).
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+      # P1: límites de memoria internos (spill a disco) — perfil default.
+      # Se monta SOLO el archivo (no la carpeta) para que el entrypoint pueda
+      # seguir escribiendo default-user.xml (creación del usuario crimetrack).
+      - ./clickhouse/users.d/memory-limits.xml:/etc/clickhouse-server/users.d/memory-limits.xml:ro
+    networks:
+      - crimetrack_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Airflow (perfil "analytics") — orquesta el flujo MinIO -> ClickHouse
+  # Metadatos en su propio Postgres (aislado del resto del sistema).
+  # ---------------------------------------------------------------------------
+  airflow-postgres:
+    image: postgres:16-alpine
+    container_name: crimetrack-airflow-postgres
+    restart: unless-stopped
+    profiles: ["analytics"]
+    mem_limit: 400m
+    cpus: "0.5"
+    environment:
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    networks:
+      - crimetrack_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_POSTGRES_USER:-airflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: crimetrack-airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USER:-admin}" \
+          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" \
+          --firstname Admin --lastname CrimeTrack \
+          --role Admin --email admin@crimetrack.local || true
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: crimetrack-airflow-webserver
+    command: webserver
+    mem_limit: 600m
+    cpus: "0.5"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: crimetrack-airflow-scheduler
+    command: scheduler
+    mem_limit: 800m
+    cpus: "1"
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+      # P5: no arrancar hasta que ClickHouse esté sano
+      clickhouse:
+        condition: service_healthy
+
 networks:
   crimetrack_net:
     driver: bridge
@@ -104,3 +282,9 @@ volumes:
     name: crimetrack_minio_data
   pocketbase_data:
     name: crimetrack_pocketbase_data
+  clickhouse_data:
+    name: crimetrack_clickhouse_data
+  clickhouse_logs:
+    name: crimetrack_clickhouse_logs
+  airflow_postgres_data:
+    name: crimetrack_airflow_postgres_data

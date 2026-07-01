@@ -166,6 +166,18 @@ MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://127.0.0.1:9000")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "crimetrack-evidence")
 MINIO_STAR_PREFIX = os.getenv("MINIO_STAR_PREFIX", "datasets/star")
 
+# --- ClickHouse (capa TÁCTICA / ESTRATÉGICA, solo lectura analítica) ---
+# IMPORTANTE: ClickHouse NO participa en el CRUD operativo. La capa operativa
+# sigue en MinIO (TransactionalMinioStore). Airflow carga MinIO -> ClickHouse.
+CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "127.0.0.1")
+CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", "8123"))  # interfaz HTTP
+CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "crimetrack")
+CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "crimetrack_ch_2026")
+CLICKHOUSE_DATABASE = os.getenv(
+    "CLICKHOUSE_DATABASE", os.getenv("CLICKHOUSE_DB", "crimetrack_analytics")
+)
+CLICKHOUSE_SECURE = os.getenv("CLICKHOUSE_SECURE", "False").lower() in ("1", "true", "yes")
+
 # --- Correo (recuperación de contraseña) ---
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"

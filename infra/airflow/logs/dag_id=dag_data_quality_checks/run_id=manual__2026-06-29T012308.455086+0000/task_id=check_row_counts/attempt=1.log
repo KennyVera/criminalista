@@ -1,0 +1,31 @@
+[2026-06-29T01:23:14.447+0000] {local_task_job_runner.py:123} INFO - ::group::Pre task execution logs
+[2026-06-29T01:23:14.641+0000] {taskinstance.py:2613} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: dag_data_quality_checks.check_row_counts manual__2026-06-29T01:23:08.455086+00:00 [queued]>
+[2026-06-29T01:23:14.742+0000] {taskinstance.py:2613} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: dag_data_quality_checks.check_row_counts manual__2026-06-29T01:23:08.455086+00:00 [queued]>
+[2026-06-29T01:23:14.748+0000] {taskinstance.py:2866} INFO - Starting attempt 1 of 2
+[2026-06-29T01:23:14.864+0000] {taskinstance.py:2889} INFO - Executing <Task(PythonOperator): check_row_counts> on 2026-06-29 01:23:08.455086+00:00
+[2026-06-29T01:23:14.952+0000] {standard_task_runner.py:104} INFO - Running: ['***', 'tasks', 'run', 'dag_data_quality_checks', 'check_row_counts', 'manual__2026-06-29T01:23:08.455086+00:00', '--job-id', '35', '--raw', '--subdir', 'DAGS_FOLDER/dag_data_quality_checks.py', '--cfg-path', '/tmp/tmpvsqn2c0n']
+[2026-06-29T01:23:14.961+0000] {logging_mixin.py:190} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:70 DeprecationWarning: This process (pid=558) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2026-06-29T01:23:14.966+0000] {standard_task_runner.py:72} INFO - Started process 575 to run task
+[2026-06-29T01:23:14.965+0000] {standard_task_runner.py:105} INFO - Job 35: Subtask check_row_counts
+[2026-06-29T01:23:15.570+0000] {task_command.py:467} INFO - Running <TaskInstance: dag_data_quality_checks.check_row_counts manual__2026-06-29T01:23:08.455086+00:00 [running]> on host e6f17338ad20
+[2026-06-29T01:23:16.651+0000] {taskinstance.py:3132} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='dag_data_quality_checks' AIRFLOW_CTX_TASK_ID='check_row_counts' AIRFLOW_CTX_EXECUTION_DATE='2026-06-29T01:23:08.455086+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2026-06-29T01:23:08.455086+00:00'
+[2026-06-29T01:23:16.656+0000] {taskinstance.py:731} INFO - ::endgroup::
+[2026-06-29T01:23:17.290+0000] {logging_mixin.py:190} INFO - == Conteo de filas por tabla ==
+[2026-06-29T01:23:17.543+0000] {logging_mixin.py:190} INFO -   fact_crimes       : 733079
+[2026-06-29T01:23:17.545+0000] {logging_mixin.py:190} INFO -   fact_incidentes   : 7
+[2026-06-29T01:23:17.548+0000] {logging_mixin.py:190} INFO -   fact_expedientes  : 7
+[2026-06-29T01:23:17.551+0000] {logging_mixin.py:190} INFO -   fact_evidencias   : 8
+[2026-06-29T01:23:17.554+0000] {logging_mixin.py:190} INFO -   fact_auditoria    : 451
+[2026-06-29T01:23:17.556+0000] {logging_mixin.py:190} INFO -   dim_fecha         : 625153
+[2026-06-29T01:23:17.556+0000] {logging_mixin.py:190} INFO -   dim_tipo_crimen   : 339
+[2026-06-29T01:23:17.559+0000] {logging_mixin.py:190} INFO -   dim_ubicacion     : 2532
+[2026-06-29T01:23:17.561+0000] {logging_mixin.py:190} INFO -   dim_usuario       : 20
+[2026-06-29T01:23:17.563+0000] {logging_mixin.py:190} INFO -   dim_estado        : 8
+[2026-06-29T01:23:17.564+0000] {logging_mixin.py:190} INFO -   dim_patrulla      : 3
+[2026-06-29T01:23:17.567+0000] {logging_mixin.py:190} INFO - OK: conteos de filas válidos.
+[2026-06-29T01:23:17.568+0000] {python.py:240} INFO - Done. Returned value was: None
+[2026-06-29T01:23:17.669+0000] {taskinstance.py:340} INFO - ::group::Post task execution logs
+[2026-06-29T01:23:17.671+0000] {taskinstance.py:352} INFO - Marking task as SUCCESS. dag_id=dag_data_quality_checks, task_id=check_row_counts, run_id=manual__2026-06-29T01:23:08.455086+00:00, execution_date=20260629T012308, start_date=20260629T012314, end_date=20260629T012317
+[2026-06-29T01:23:17.840+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[2026-06-29T01:23:17.990+0000] {taskinstance.py:3895} INFO - 1 downstream tasks scheduled from follow-on schedule check
+[2026-06-29T01:23:18.046+0000] {local_task_job_runner.py:245} INFO - ::endgroup::

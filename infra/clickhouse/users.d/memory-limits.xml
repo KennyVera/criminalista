@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+  Límites de memoria de ClickHouse (P1).
+  Con esto ClickHouse DESBORDA A DISCO (external GROUP BY / ORDER BY / JOIN) en
+  lugar de consumir toda la RAM. Los JOIN de ~733k filas (fact_crimes) corren
+  aunque sean algo más lentos, sin tumbar la VM de Docker.
+
+  Se aplican al perfil "default" que heredan todos los usuarios (incl. crimetrack).
+-->
+<clickhouse>
+    <profiles>
+        <default>
+            <!-- Tope de RAM por consulta (~1.5 GB; el contenedor tiene mem_limit 2g) -->
+            <max_memory_usage>1500000000</max_memory_usage>
+            <max_memory_usage_for_user>1500000000</max_memory_usage_for_user>
+
+            <!-- A partir de estos umbrales, agrega/ordena/une usando disco -->
+            <max_bytes_before_external_group_by>500000000</max_bytes_before_external_group_by>
+            <max_bytes_before_external_sort>500000000</max_bytes_before_external_sort>
+
+            <!-- JOIN: permitir spill parcial a disco en lugar de fallar por RAM -->
+            <join_algorithm>auto</join_algorithm>
+            <max_bytes_in_join>500000000</max_bytes_in_join>
+            <join_overflow_mode>throw</join_overflow_mode>
+        </default>
+    </profiles>
+</clickhouse>

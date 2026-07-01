@@ -1,0 +1,190 @@
+[2026-06-28T05:14:50.079+0000] {processor.py:186} INFO - Started process (PID=915) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:14:50.082+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:14:50.087+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:14:50.086+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:14:59.425+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:15:00.159+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.157+0000] {override.py:1911} INFO - Created Permission View: can edit on DAG:crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.186+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.186+0000] {override.py:1911} INFO - Created Permission View: can read on DAG:crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.206+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.206+0000] {override.py:1911} INFO - Created Permission View: can delete on DAG:crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.225+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.224+0000] {override.py:1911} INFO - Created Permission View: can read on DAG Run:crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.241+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.241+0000] {override.py:1911} INFO - Created Permission View: can delete on DAG Run:crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.257+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.256+0000] {override.py:1911} INFO - Created Permission View: menu access on DAG Run:crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.272+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.272+0000] {override.py:1911} INFO - Created Permission View: can create on DAG Run:crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.275+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.274+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:15:00.321+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.320+0000] {dag.py:3262} INFO - Creating ORM DAG for crimetrack_minio_to_clickhouse
+[2026-06-28T05:15:00.323+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:00.323+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:15:00.369+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 10.299 seconds
+[2026-06-28T05:15:30.556+0000] {processor.py:186} INFO - Started process (PID=935) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:15:30.559+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:15:30.564+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:30.563+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:15:31.464+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:15:31.510+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:31.509+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:15:31.542+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:15:31.542+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:15:31.579+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.038 seconds
+[2026-06-28T05:16:02.320+0000] {processor.py:186} INFO - Started process (PID=953) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:16:02.334+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:16:02.341+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:16:02.340+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:16:04.857+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:16:05.059+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:16:05.055+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:16:05.317+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:16:05.317+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:16:05.605+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 3.315 seconds
+[2026-06-28T05:16:36.184+0000] {processor.py:186} INFO - Started process (PID=971) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:16:36.187+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:16:36.197+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:16:36.196+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:16:39.139+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:16:39.199+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:16:39.198+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:16:39.227+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:16:39.227+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:16:39.269+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 3.098 seconds
+[2026-06-28T05:17:09.794+0000] {processor.py:186} INFO - Started process (PID=983) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:17:09.798+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:17:09.807+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:17:09.806+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:17:10.771+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:17:10.813+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:17:10.813+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:17:10.837+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:17:10.837+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:17:10.872+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.103 seconds
+[2026-06-28T05:17:41.299+0000] {processor.py:186} INFO - Started process (PID=1017) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:17:41.302+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:17:41.306+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:17:41.306+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:17:42.171+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:17:42.227+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:17:42.227+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:17:42.256+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:17:42.255+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:17:42.291+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.000 seconds
+[2026-06-28T05:18:12.816+0000] {processor.py:186} INFO - Started process (PID=1051) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:18:12.818+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:18:12.822+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:18:12.822+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:18:13.587+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:18:13.628+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:18:13.628+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:18:13.650+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:18:13.649+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:18:13.683+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 0.875 seconds
+[2026-06-28T05:18:44.348+0000] {processor.py:186} INFO - Started process (PID=1070) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:18:44.350+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:18:44.354+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:18:44.354+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:18:45.408+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:18:45.446+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:18:45.446+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:18:45.473+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:18:45.472+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:18:45.512+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.180 seconds
+[2026-06-28T05:19:15.993+0000] {processor.py:186} INFO - Started process (PID=1090) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:19:15.995+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:19:16.000+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:19:15.999+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:19:16.841+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:19:16.884+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:19:16.884+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:19:16.907+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:19:16.907+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:19:16.938+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 0.952 seconds
+[2026-06-28T05:19:47.398+0000] {processor.py:186} INFO - Started process (PID=1109) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:19:47.402+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:19:47.408+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:19:47.407+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:19:48.095+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:19:48.131+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:19:48.130+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:19:48.153+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:19:48.153+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:19:48.183+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 0.798 seconds
+[2026-06-28T05:20:18.740+0000] {processor.py:186} INFO - Started process (PID=1128) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:20:18.743+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:20:18.749+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:20:18.748+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:20:20.446+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:20:20.516+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:20:20.515+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:20:20.556+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:20:20.556+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:20:20.636+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.906 seconds
+[2026-06-28T05:20:51.380+0000] {processor.py:186} INFO - Started process (PID=1147) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:20:51.383+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:20:51.392+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:20:51.391+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:20:52.260+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:20:52.310+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:20:52.309+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:20:52.336+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:20:52.336+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:20:52.381+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.014 seconds
+[2026-06-28T05:21:22.831+0000] {processor.py:186} INFO - Started process (PID=1166) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:21:22.833+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:21:22.840+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:21:22.839+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:21:24.359+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:21:24.428+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:21:24.427+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:21:24.454+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:21:24.453+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:21:24.491+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.675 seconds
+[2026-06-28T05:21:55.381+0000] {processor.py:186} INFO - Started process (PID=1178) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:21:55.383+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:21:55.389+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:21:55.388+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:21:56.216+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:21:56.258+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:21:56.257+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:21:56.285+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:21:56.285+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:21:56.322+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 0.954 seconds
+[2026-06-28T05:22:26.796+0000] {processor.py:186} INFO - Started process (PID=1197) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:22:26.799+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:22:26.803+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:22:26.803+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:22:27.636+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:22:27.763+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:22:27.762+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:22:27.849+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:22:27.849+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:22:27.887+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.101 seconds
+[2026-06-28T05:22:58.371+0000] {processor.py:186} INFO - Started process (PID=1216) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:22:58.374+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:22:58.379+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:22:58.379+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:22:59.277+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:22:59.315+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:22:59.315+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:22:59.336+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:22:59.336+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:22:59.377+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.021 seconds
+[2026-06-28T05:23:29.777+0000] {processor.py:186} INFO - Started process (PID=1240) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:23:29.779+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:23:29.784+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:23:29.783+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:23:30.780+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:23:30.859+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:23:30.858+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:23:30.980+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:23:30.979+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:23:31.047+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.277 seconds
+[2026-06-28T05:24:01.473+0000] {processor.py:186} INFO - Started process (PID=1259) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:24:01.475+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:24:01.480+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:24:01.479+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:24:02.752+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:24:02.840+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:24:02.839+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:24:02.872+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:24:02.872+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:24:02.907+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.444 seconds
+[2026-06-28T05:24:33.239+0000] {processor.py:186} INFO - Started process (PID=1278) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:24:33.241+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:24:33.247+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:24:33.245+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:24:34.122+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:24:34.171+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:24:34.171+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:24:34.191+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:24:34.191+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:24:34.225+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 0.999 seconds
+[2026-06-28T05:25:04.822+0000] {processor.py:186} INFO - Started process (PID=1297) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:25:04.824+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:25:04.828+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:25:04.827+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:25:06.034+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:25:06.075+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:25:06.074+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:25:06.097+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:25:06.096+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:25:06.133+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.321 seconds
+[2026-06-28T05:25:36.666+0000] {processor.py:186} INFO - Started process (PID=1316) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:25:36.669+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:25:36.674+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:25:36.673+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:25:37.652+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:25:37.704+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:25:37.703+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:25:37.735+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:25:37.735+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:25:37.776+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.119 seconds
+[2026-06-28T05:26:08.194+0000] {processor.py:186} INFO - Started process (PID=1335) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:26:08.196+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:26:08.201+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:26:08.200+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:26:08.939+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:26:08.984+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:26:08.983+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:26:09.006+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:26:09.006+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:26:09.039+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 0.855 seconds
+[2026-06-28T05:26:39.765+0000] {processor.py:186} INFO - Started process (PID=1354) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:26:39.772+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:26:39.788+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:26:39.787+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:26:41.855+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:26:41.948+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:26:41.947+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:26:41.987+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:26:41.986+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:26:42.049+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 2.298 seconds
+[2026-06-28T05:27:12.533+0000] {processor.py:186} INFO - Started process (PID=1372) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:27:12.545+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:27:12.580+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:27:12.579+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:27:13.782+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:27:13.847+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:27:13.846+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:27:13.940+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:27:13.939+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:27:14.031+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.514 seconds
+[2026-06-28T05:27:44.868+0000] {processor.py:186} INFO - Started process (PID=1384) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:27:44.870+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:27:44.876+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:27:44.875+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:27:45.735+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:27:45.809+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:27:45.808+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:27:45.831+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:27:45.831+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:27:45.862+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 1.002 seconds
+[2026-06-28T05:28:16.291+0000] {processor.py:186} INFO - Started process (PID=1404) to work on /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:28:16.294+0000] {processor.py:914} INFO - Processing file /opt/airflow/dags/crimetrack_minio_to_clickhouse.py for tasks to queue
+[2026-06-28T05:28:16.298+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:28:16.297+0000] {dagbag.py:588} INFO - Filling up the DagBag from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:28:17.032+0000] {processor.py:925} INFO - DAG(s) 'crimetrack_minio_to_clickhouse' retrieved from /opt/airflow/dags/crimetrack_minio_to_clickhouse.py
+[2026-06-28T05:28:17.074+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:28:17.074+0000] {dag.py:3239} INFO - Sync 1 DAGs
+[2026-06-28T05:28:17.102+0000] {logging_mixin.py:190} INFO - [2026-06-28T05:28:17.101+0000] {dag.py:4180} INFO - Setting next_dagrun for crimetrack_minio_to_clickhouse to None, run_after=None
+[2026-06-28T05:28:17.135+0000] {processor.py:208} INFO - Processing /opt/airflow/dags/crimetrack_minio_to_clickhouse.py took 0.853 seconds
