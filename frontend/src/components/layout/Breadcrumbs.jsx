@@ -21,7 +21,12 @@ const LABELS = {
   catalogos: 'Catálogos',
   zonas: 'Zonas',
   'estado-sistema': 'Estado del sistema',
-  'generar-datos': 'Sincronización de datos',
+  'generar-datos': 'Ejecutar ETL',
+  operaciones: 'Operaciones',
+  patrullas: 'Patrullas',
+  turnos: 'Turnos operativos',
+  despacho: 'Central de despacho',
+  'mis-patrullas': 'Mis patrullas',
 }
 
 export default function Breadcrumbs({ className }) {

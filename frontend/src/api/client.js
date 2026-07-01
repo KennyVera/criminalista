@@ -63,6 +63,7 @@ async function uploadForm(path, formData) {
 async function fetchBlob(path) {
   const res = await fetch(`${BASE}${path}`, {
     headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+    cache: 'no-store',
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
@@ -118,6 +119,27 @@ export const api = {
     }),
   authLogout: () =>
     request('/packages/autenticacion/logout/', { method: 'POST' }),
+  authChangePassword: (current_password, new_password) =>
+    request('/packages/autenticacion/cambiar-contrasena/', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password }),
+    }),
+  authProfile: () => request('/packages/autenticacion/perfil/'),
+  authUpdateProfile: (body) =>
+    request('/packages/autenticacion/perfil/', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  authUploadProfileFoto: (formData) =>
+    uploadForm('/packages/autenticacion/perfil/foto/', formData),
+  authProfileFotoBlob: (version = '') =>
+    fetchBlob(
+      version
+        ? `/packages/autenticacion/perfil/foto/?v=${encodeURIComponent(version)}`
+        : '/packages/autenticacion/perfil/foto/'
+    ),
+  authRemoveProfileFoto: () =>
+    request('/packages/autenticacion/perfil/foto/', { method: 'DELETE' }),
   authMe: () => request('/packages/autenticacion/me/'),
   authActiveSessions: () => request('/packages/autenticacion/sesiones-activas/'),
   authCloseSession: (idSesion) =>

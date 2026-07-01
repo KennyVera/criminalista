@@ -5,7 +5,6 @@ import {
   AlertCircle,
   Loader2,
   RefreshCw,
-  Layers,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { Button, Card, Badge, Input } from '../components/ui'
@@ -133,23 +132,20 @@ export default function GenerateDataPage() {
     ? `Ingrese un entero entre ${MIN_BATCH.toLocaleString('es-CO')} y ${MAX_BATCH.toLocaleString('es-CO')}.`
     : null
 
-  const handleSync = async (mode = 'auto') => {
-    if (mode !== 'full' && batchInvalid) return
+  const handleSync = async () => {
+    if (batchInvalid) return
     cancelRef.current = false
     setPhase(PHASE.syncing)
     setErrorMsg(null)
     setSyncResult(null)
     setSyncProgress({ percent: 0, message: 'Encolando sincronización...' })
-    setStatusHint(
-      mode === 'full'
-        ? 'Reconstrucción completa del modelo estrella en MinIO.'
-        : 'Extracción por lotes desde PocketBase (solo registros nuevos si aplica).'
-    )
+    setStatusHint('Extracción por lotes desde PocketBase (solo registros nuevos si aplica).')
 
     try {
-      const payload = { mode, export_raw_copy: true }
-      if (mode !== 'full') {
-        payload.cantidad_registros = parsedBatch
+      const payload = {
+        mode: 'auto',
+        export_raw_copy: true,
+        cantidad_registros: parsedBatch,
       }
       const queued = await api.syncPocketBase(payload)
       await pollTask(
@@ -288,17 +284,9 @@ export default function GenerateDataPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button
-                type="button"
-                onClick={() => handleSync('auto')}
-                disabled={batchInvalid}
-              >
+              <Button type="button" onClick={handleSync} disabled={batchInvalid}>
                 <RefreshCw className="h-4 w-4" />
                 Sincronizar / Extraer datos
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => handleSync('full')}>
-                <Layers className="h-4 w-4" />
-                Reconstruir completo
               </Button>
             </div>
             <p className="text-xs leading-relaxed text-slate-500">

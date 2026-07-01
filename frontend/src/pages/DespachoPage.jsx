@@ -18,7 +18,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { canDespachar } from '../utils/roles'
 
-const PRIO_TONE = { Alta: 'danger', Media: 'warning', Baja: 'neutral' }
+const PRIO_TONE = { Crítica: 'danger', Alta: 'danger', Media: 'warning', Baja: 'neutral' }
 const ESTADO_TONE = {
   Reportado: 'info',
   Despachado: 'warning',
@@ -36,11 +36,20 @@ export default function DespachoPage() {
 
   const [incidentes, setIncidentes] = useState([])
   const [patrullas, setPatrullas] = useState([])
-  const [catalogos, setCatalogos] = useState({ tipos_incidente: [], prioridades: [] })
+  const [catalogos, setCatalogos] = useState({
+    tipos_incidente: [],
+    prioridades: [],
+    distritos: [],
+    turnos: [],
+  })
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({
     tipo: 'Robo',
-    ubicacion: '',
+    direccion: '',
+    barrio: '',
+    fk_distrito: '',
+    latitud: '',
+    longitud: '',
     descripcion: '',
     prioridad: 'Media',
     reportante: '',
@@ -84,15 +93,28 @@ export default function DespachoPage() {
 
   const handleCreate = async (e) => {
     e.preventDefault()
-    if (!form.ubicacion.trim()) {
-      toast.error('Ubicación requerida', 'Indique dónde ocurre el incidente.')
+    if (!form.direccion.trim()) {
+      toast.error('Ubicación requerida', 'Indique la dirección del incidente.')
       return
     }
     setCreating(true)
     try {
-      await patrullasApi.crearIncidente(form)
-      toast.success('Incidente registrado', `${form.tipo} · ${form.ubicacion}`)
-      setForm((f) => ({ ...f, ubicacion: '', descripcion: '', reportante: '' }))
+      const body = {
+        ...form,
+        fk_distrito: form.fk_distrito ? Number(form.fk_distrito) : undefined,
+      }
+      await patrullasApi.crearIncidente(body)
+      toast.success('Incidente registrado', `${form.tipo} · ${form.direccion}`)
+      setForm((f) => ({
+        ...f,
+        direccion: '',
+        barrio: '',
+        fk_distrito: '',
+        latitud: '',
+        longitud: '',
+        descripcion: '',
+        reportante: '',
+      }))
       load()
     } catch (err) {
       toast.error('No se pudo registrar', err.message)
@@ -171,7 +193,8 @@ export default function DespachoPage() {
     : ['Robo', 'Hurto', 'Disturbio', 'Otro']
   const prioridades = catalogos.prioridades.length
     ? catalogos.prioridades
-    : ['Alta', 'Media', 'Baja']
+    : ['Baja', 'Media', 'Alta', 'Crítica']
+  const distritos = catalogos.distritos || []
 
   return (
     <section className="mx-auto max-w-7xl space-y-8">
@@ -228,14 +251,60 @@ export default function DespachoPage() {
               </label>
             </div>
             <label className="block text-sm font-medium text-slate-700">
-              Ubicación
+              Dirección
               <Input
-                value={form.ubicacion}
-                onChange={(e) => setForm((f) => ({ ...f, ubicacion: e.target.value }))}
+                value={form.direccion}
+                onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))}
                 className="mt-1.5"
                 placeholder="Ej. Av. Principal y Calle 5"
               />
             </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Barrio
+                <Input
+                  value={form.barrio}
+                  onChange={(e) => setForm((f) => ({ ...f, barrio: e.target.value }))}
+                  className="mt-1.5"
+                  placeholder="Opcional"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Distrito
+                <Select
+                  value={form.fk_distrito}
+                  onChange={(e) => setForm((f) => ({ ...f, fk_distrito: e.target.value }))}
+                  className="mt-1.5"
+                >
+                  <option value="">Sin distrito</option>
+                  {distritos.map((d) => (
+                    <option key={d.id_distrito} value={d.id_distrito}>
+                      {d.nombre}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Latitud
+                <Input
+                  value={form.latitud}
+                  onChange={(e) => setForm((f) => ({ ...f, latitud: e.target.value }))}
+                  className="mt-1.5"
+                  placeholder="Opcional"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Longitud
+                <Input
+                  value={form.longitud}
+                  onChange={(e) => setForm((f) => ({ ...f, longitud: e.target.value }))}
+                  className="mt-1.5"
+                  placeholder="Opcional"
+                />
+              </label>
+            </div>
             <label className="block text-sm font-medium text-slate-700">
               Reportante (opcional)
               <Input

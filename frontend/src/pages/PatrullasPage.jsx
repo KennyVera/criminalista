@@ -23,7 +23,8 @@ export default function PatrullasPage() {
   const [patrullas, setPatrullas] = useState([])
   const [oficiales, setOficiales] = useState([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ sector: '', turno: '', notas: '' })
+  const [form, setForm] = useState({ sector: '', turno: '', fk_turno: '', notas: '' })
+  const [turnos, setTurnos] = useState([])
   const [creating, setCreating] = useState(false)
   const [assignTarget, setAssignTarget] = useState(null)
   const [selected, setSelected] = useState([])
@@ -45,13 +46,24 @@ export default function PatrullasPage() {
   }, [toast])
 
   useEffect(() => {
-    if (allowed) load()
+    if (!allowed) return
+    patrullasApi.catalogos().then((c) => setTurnos(c.turnos || [])).catch(() => {})
+    load()
   }, [allowed, load])
 
   const disponibles = useMemo(
     () => oficiales.filter((o) => o.disponible),
     [oficiales],
   )
+
+  const onTurnoChange = (fk) => {
+    const t = turnos.find((x) => String(x.id_turno) === String(fk))
+    setForm((f) => ({
+      ...f,
+      fk_turno: fk,
+      turno: t ? `${t.nombre} (${t.hora_inicio}–${t.hora_fin})` : '',
+    }))
+  }
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -61,9 +73,14 @@ export default function PatrullasPage() {
     }
     setCreating(true)
     try {
-      await patrullasApi.crear(form)
+      await patrullasApi.crear({
+        sector: form.sector,
+        turno: form.turno,
+        fk_turno: form.fk_turno ? Number(form.fk_turno) : undefined,
+        notas: form.notas,
+      })
       toast.success('Patrulla creada', `${form.sector} · ${form.turno}`)
-      setForm({ sector: '', turno: '', notas: '' })
+      setForm({ sector: '', turno: '', fk_turno: '', notas: '' })
       load()
     } catch (err) {
       toast.error('No se pudo crear', err.message)
@@ -149,14 +166,16 @@ export default function PatrullasPage() {
             <label className="block text-sm font-medium text-slate-700">
               Turno
               <Select
-                value={form.turno}
-                onChange={(e) => setForm((f) => ({ ...f, turno: e.target.value }))}
+                value={form.fk_turno}
+                onChange={(e) => onTurnoChange(e.target.value)}
                 className="mt-1.5"
               >
                 <option value="">Seleccione…</option>
-                <option value="Diurno (06:00-14:00)">Diurno (06:00-14:00)</option>
-                <option value="Vespertino (14:00-22:00)">Vespertino (14:00-22:00)</option>
-                <option value="Nocturno (22:00-06:00)">Nocturno (22:00-06:00)</option>
+                {turnos.map((t) => (
+                  <option key={t.id_turno} value={t.id_turno}>
+                    {t.nombre} ({t.hora_inicio}–{t.hora_fin})
+                  </option>
+                ))}
               </Select>
             </label>
             <label className="block text-sm font-medium text-slate-700">

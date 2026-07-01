@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -10,6 +12,8 @@ from packages.autenticacion_seguridad.permissions import IsAdminJWT, IsAuthentic
 from packages.autenticacion_seguridad.services.auth_service import AuthError, AuthService
 from packages.autenticacion_seguridad.services.jwt_tokens import decode_access_token
 from packages.autenticacion_seguridad.services.password_recovery import PasswordRecoveryService
+from packages.autenticacion_seguridad.services.profile_service import ProfileService
+from packages.shared.audit import audit_request
 
 
 def _client_ip(request) -> str:
@@ -140,28 +144,147 @@ class LogoutView(APIView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class ChangePasswordView(APIView):
+    """POST — cambia la contraseña del usuario autenticado."""
+
+    permission_classes = [IsAuthenticatedJWT]
+
+    def post(self, request):
+        current_password = request.data.get("current_password", "")
+        new_password = request.data.get("new_password", "")
+        if not current_password or not new_password:
+            return Response(
+                {"error": "current_password y new_password son obligatorios"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user = request.crimetrack_user
+        try:
+            result = AuthService().change_password(
+                int(user["id_usuario"]),
+                str(current_password),
+                str(new_password),
+                ip=_client_ip(request),
+            )
+            return Response(result, status=status.HTTP_200_OK)
+        except AuthError as exc:
+            return Response(
+                {"error": str(exc), "code": getattr(exc, "code", "AUTH_ERROR")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ProfileView(APIView):
+    """GET/PATCH — perfil del usuario autenticado."""
+
+    permission_classes = [IsAuthenticatedJWT]
+
+    def get(self, request):
+        user_id = int(request.crimetrack_user["id_usuario"])
+        profile = ProfileService().get_profile(user_id)
+        if not profile:
+            return Response({"error": "No encontrado"}, status=404)
+        return Response(profile)
+
+    def patch(self, request):
+        user_id = int(request.crimetrack_user["id_usuario"])
+        try:
+            antes = ProfileService().get_profile(user_id)
+            profile = ProfileService().update_profile(user_id, request.data)
+            audit_request(
+                request,
+                accion="PROFILE_UPDATED",
+                tabla="app_perfiles_usuario",
+                detalle=f"Perfil actualizado: {profile.get('email', '')}",
+                antes=antes,
+                despues=profile,
+            )
+            return Response(profile)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ProfileFotoView(APIView):
+    """GET — foto de perfil. POST — subir foto. DELETE — quitar foto."""
+
+    permission_classes = [IsAuthenticatedJWT]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request):
+        user_id = int(request.crimetrack_user["id_usuario"])
+        foto = ProfileService().get_foto(user_id)
+        if not foto:
+            return Response({"error": "Sin foto de perfil"}, status=status.HTTP_404_NOT_FOUND)
+        response = HttpResponse(foto["body"], content_type=foto["content_type"])
+        response["Cache-Control"] = "private, no-cache, no-store, must-revalidate"
+        response["Pragma"] = "no-cache"
+        return response
+
+    def post(self, request):
+        user_id = int(request.crimetrack_user["id_usuario"])
+        archivo = request.FILES.get("foto") or request.FILES.get("archivo")
+        if not archivo:
+            return Response(
+                {"error": "Campo 'foto' requerido (multipart)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            profile = ProfileService().set_foto(
+                user_id,
+                file_obj=archivo,
+                filename=str(archivo.name or "foto.jpg"),
+            )
+            audit_request(
+                request,
+                accion="PROFILE_PHOTO_UPDATED",
+                tabla="app_perfiles_usuario",
+                detalle=f"Foto de perfil actualizada: {profile.get('email', '')}",
+            )
+            return Response(profile)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request):
+        user_id = int(request.crimetrack_user["id_usuario"])
+        profile = ProfileService().remove_foto(user_id)
+        audit_request(
+            request,
+            accion="PROFILE_PHOTO_REMOVED",
+            tabla="app_perfiles_usuario",
+            detalle=f"Foto de perfil eliminada: {profile.get('email', '')}",
+        )
+        return Response(profile)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class MeView(APIView):
     permission_classes = [IsAuthenticatedJWT]
 
     def get(self, request):
-        user = request.crimetrack_user
+        user_id = int(request.crimetrack_user["id_usuario"])
+        profile = ProfileService().get_profile(user_id)
+        if not profile:
+            return Response({"error": "No encontrado"}, status=404)
         permisos = []
         try:
             from packages.autenticacion_seguridad.services.permisos_operativos_service import (
                 PermisosOperativosService,
             )
 
-            permisos = PermisosOperativosService().list_rol_permisos(int(user["fk_rol"]))
+            permisos = PermisosOperativosService().list_rol_permisos(int(profile["fk_rol"]))
         except Exception:
             pass
         personal = None
         try:
             from packages.estructura_policial.services.personal_service import PersonalPolicialService
 
-            personal = PersonalPolicialService().get_by_usuario(int(user["id_usuario"]))
+            personal = PersonalPolicialService().get_by_usuario(user_id)
         except Exception:
             pass
-        return Response({"user": user, "permisos": permisos, "personal_policial": personal})
+        return Response({"user": profile, "permisos": permisos, "personal_policial": personal})
 
 
 @method_decorator(csrf_exempt, name="dispatch")

@@ -28,6 +28,13 @@ TRANSACTIONAL_COLLECTIONS = [
     "app_patrullas",
     "app_patrulla_oficiales",
     "app_incidentes",
+    "app_turnos",
+    "app_asignacion_turnos",
+    "app_tipos_incidente",
+    "app_estados_incidente",
+    "app_prioridades_incidente",
+    "app_ubicaciones_incidente",
+    "app_incidente_estado_historial",
     "app_expedientes",
     # Seguridad y control de acceso (capa operativa)
     "app_permisos",
@@ -39,6 +46,7 @@ TRANSACTIONAL_COLLECTIONS = [
     "app_estaciones_policiales",
     "app_rangos_policiales",
     "app_personal_policial",
+    "app_perfiles_usuario",
 ]
 
 SCHEMAS: dict[str, list[str]] = {
@@ -176,6 +184,7 @@ SCHEMAS: dict[str, list[str]] = {
         "codigo",
         "sector",
         "turno",
+        "fk_turno",
         "estado",
         "fk_comisario",
         "comisario_nombre",
@@ -198,10 +207,15 @@ SCHEMAS: dict[str, list[str]] = {
         "id_incidente",
         "codigo",
         "tipo",
+        "fk_tipo_incidente",
         "descripcion",
         "ubicacion",
+        "fk_ubicacion",
         "prioridad",
+        "fk_prioridad_incidente",
         "estado",
+        "fk_estado_incidente",
+        "fk_turno_operativo",
         "reportante",
         "fk_patrulla",
         "patrulla_codigo",
@@ -218,10 +232,81 @@ SCHEMAS: dict[str, list[str]] = {
         "fecha_despacho",
         "fecha_atendido",
         "fecha_cierre",
-        # Vínculo con el expediente criminal (un incidente pertenece a 0..1 expediente).
         "fk_expediente",
         "expediente_case_number",
         "fecha_vinculacion",
+    ],
+    "app_turnos": [
+        "id_turno",
+        "codigo",
+        "nombre",
+        "hora_inicio",
+        "hora_fin",
+        "orden",
+        "activo",
+    ],
+    "app_asignacion_turnos": [
+        "id_asignacion_turno",
+        "fk_turno",
+        "turno_nombre",
+        "fk_usuario",
+        "usuario_nombre",
+        "usuario_placa",
+        "fk_rol",
+        "rol_nombre",
+        "fecha",
+        "hora_inicio_efectiva",
+        "hora_fin_efectiva",
+        "estado",
+        "notas",
+        "creado_en",
+    ],
+    "app_tipos_incidente": [
+        "id_tipo",
+        "codigo",
+        "nombre",
+        "descripcion",
+        "orden",
+        "activo",
+    ],
+    "app_estados_incidente": [
+        "id_estado",
+        "codigo",
+        "nombre",
+        "orden",
+        "es_final",
+        "activo",
+    ],
+    "app_prioridades_incidente": [
+        "id_prioridad",
+        "codigo",
+        "nombre",
+        "nivel",
+        "orden",
+        "activo",
+    ],
+    "app_ubicaciones_incidente": [
+        "id_ubicacion",
+        "direccion",
+        "barrio",
+        "fk_distrito",
+        "distrito_nombre",
+        "latitud",
+        "longitud",
+        "referencia",
+        "creado_en",
+    ],
+    "app_incidente_estado_historial": [
+        "id_historial",
+        "fk_incidente",
+        "fk_estado_anterior",
+        "fk_estado_nuevo",
+        "estado_anterior",
+        "estado_nuevo",
+        "fk_usuario",
+        "usuario_nombre",
+        "comentario",
+        "fecha_hora",
     ],
     "app_expedientes": [
         "id_expediente",
@@ -339,6 +424,14 @@ SCHEMAS: dict[str, list[str]] = {
         "fecha_creacion",
         "fecha_actualizacion",
     ],
+    "app_perfiles_usuario": [
+        "id_perfil",
+        "fk_usuario",
+        "telefono",
+        "biografia",
+        "foto_url",
+        "actualizado_en",
+    ],
 }
 
 
@@ -349,18 +442,36 @@ class TransactionalMinioStore(MinioParquetStore):
         super().__init__()
         self.prefix = os.getenv("MINIO_TRANSACTIONAL_PREFIX", "datasets/transactional")
 
+    def _align_schema(self, name: str, df: pd.DataFrame) -> pd.DataFrame:
+        schema = SCHEMAS.get(name, [])
+        if not schema:
+            return df
+        df = df.copy()
+        for col in schema:
+            if col not in df.columns:
+                if col == "activo":
+                    df[col] = True
+                elif col in ("apoyo_solicitado", "es_final"):
+                    df[col] = False
+                elif col.startswith("fk_") or col.startswith("id_"):
+                    df[col] = pd.NA
+                else:
+                    df[col] = ""
+        extras = [c for c in df.columns if c not in schema]
+        return df[schema + extras] if extras else df[schema]
+
     def read_table(self, name: str) -> pd.DataFrame:
         if name not in TRANSACTIONAL_COLLECTIONS:
             raise ValueError(f"Tabla transaccional desconocida: {name}")
         df = self.read_df(name, use_cache=False)
         if df.empty:
             return pd.DataFrame(columns=SCHEMAS[name])
-        return df
+        return self._align_schema(name, df)
 
     def write_table(self, name: str, df: pd.DataFrame) -> None:
         if name not in TRANSACTIONAL_COLLECTIONS:
             raise ValueError(f"Tabla transaccional desconocida: {name}")
-        self.write_df(name, df)
+        self.write_df(name, self._align_schema(name, df))
 
     @staticmethod
     def compute_audit_hash(previous_hash: str, row: dict[str, Any]) -> str:
@@ -398,6 +509,13 @@ class TransactionalMinioStore(MinioParquetStore):
             "app_patrullas": "id_patrulla",
             "app_patrulla_oficiales": "id_patrulla_oficial",
             "app_incidentes": "id_incidente",
+            "app_turnos": "id_turno",
+            "app_asignacion_turnos": "id_asignacion_turno",
+            "app_tipos_incidente": "id_tipo",
+            "app_estados_incidente": "id_estado",
+            "app_prioridades_incidente": "id_prioridad",
+            "app_ubicaciones_incidente": "id_ubicacion",
+            "app_incidente_estado_historial": "id_historial",
             "app_expedientes": "id_expediente",
             "app_permisos": "id_permiso",
             "app_rol_permisos": "id_rol_permiso",
@@ -407,6 +525,7 @@ class TransactionalMinioStore(MinioParquetStore):
             "app_estaciones_policiales": "id_estacion",
             "app_rangos_policiales": "id_rango",
             "app_personal_policial": "id_personal",
+            "app_perfiles_usuario": "id_perfil",
         }[name]
         if new_id_col not in row or row[new_id_col] is None:
             row[new_id_col] = int(df[new_id_col].max()) + 1 if len(df) else 1

@@ -99,6 +99,26 @@ class AdminGeneratePlacaView(APIView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class AdminUserFotoView(APIView):
+    permission_classes = [IsAdminJWT]
+
+    def get(self, request, user_id: int):
+        from django.http import HttpResponse
+
+        from packages.autenticacion_seguridad.services.profile_service import ProfileService
+
+        if not UsersAdminService().get_user(user_id):
+            return Response({"error": "Usuario no encontrado"}, status=404)
+        foto = ProfileService().get_foto(user_id)
+        if not foto:
+            return Response({"error": "Sin foto de perfil"}, status=404)
+        response = HttpResponse(foto["body"], content_type=foto["content_type"])
+        response["Cache-Control"] = "private, no-cache, no-store, must-revalidate"
+        response["Pragma"] = "no-cache"
+        return response
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class AdminUserDetailView(APIView):
     permission_classes = [IsAdminJWT]
 

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
-import { UserPlus, Pencil, Trash2, UserCheck, UserX, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { UserPlus, Pencil, Trash2, UserCheck, UserX, RefreshCw, Search } from 'lucide-react'
 import AdminGuard from '../../components/admin/AdminGuard'
 import AdminPageHeader from '../../components/admin/AdminPageHeader'
 import { adminApi } from '../../api/admin'
 import { Button, Card, Badge, Spinner, PasswordInput } from '../../components/ui'
+import Combobox from '../../components/ui/Combobox'
+import UserAvatar, { useAdminUserPhotoUrls, userPhotoVersion } from '../../components/UserAvatar'
+import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { EMAIL_HINT, validateEmailAddress } from '../../utils/emailValidation'
 
@@ -30,7 +33,10 @@ export default function AdminUsersPage() {
   const [rolePermsPreview, setRolePermsPreview] = useState([])
   const [generatingPlaca, setGeneratingPlaca] = useState(false)
   const [emailError, setEmailError] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState('')
   const toast = useToast()
+  const { user: currentUser, photoEpoch } = useAuth()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,6 +54,23 @@ export default function AdminUsersPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!currentUser?.id_usuario) return
+    setItems((prev) =>
+      prev.map((u) =>
+        Number(u.id_usuario) === Number(currentUser.id_usuario)
+          ? {
+              ...u,
+              tiene_foto: currentUser.tiene_foto,
+              foto_actualizada_en: currentUser.foto_actualizada_en,
+              nombres: currentUser.nombres,
+              apellidos: currentUser.apellidos,
+            }
+          : u
+      )
+    )
+  }, [photoEpoch, currentUser])
 
   useEffect(() => {
     if (!formOpen || !form.fk_rol) {
@@ -154,6 +177,50 @@ export default function AdminUsersPage() {
 
   const selectedRoleName =
     roles.find((r) => Number(r.id_rol) === Number(form.fk_rol))?.nombre_rol || 'Rol'
+
+  const roleFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'Todos los roles' },
+      ...roles.map((r) => ({
+        value: String(r.id_rol),
+        label: r.nombre_rol,
+      })),
+    ],
+    [roles]
+  )
+
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return items.filter((u) => {
+      if (roleFilter && String(u.fk_rol) !== String(roleFilter)) {
+        return false
+      }
+      if (!q) return true
+      const haystack = [
+        u.nombres,
+        u.apellidos,
+        `${u.nombres} ${u.apellidos}`,
+        u.email,
+        u.numero_placa,
+        u.nombre_rol,
+        u.estado_cuenta,
+        String(u.id_usuario),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [items, roleFilter, searchQuery])
+
+  const hasActiveFilters = Boolean(searchQuery.trim() || roleFilter)
+
+  const photoUrls = useAdminUserPhotoUrls(items, currentUser?.id_usuario, photoEpoch)
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setRoleFilter('')
+  }
 
   return (
     <AdminGuard>
@@ -307,7 +374,35 @@ export default function AdminUsersPage() {
             <Spinner />
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 bg-slate-50/40 px-4 py-4">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar por nombre, email, placa, rol…"
+                  className={`${INPUT} pl-10`}
+                  aria-label="Buscar usuarios"
+                />
+              </div>
+              <div className="w-full sm:w-56">
+                <Combobox
+                  label="Rol"
+                  value={roleFilter}
+                  onChange={setRoleFilter}
+                  options={roleFilterOptions}
+                  placeholder="Todos los roles"
+                />
+              </div>
+              {hasActiveFilters && (
+                <Button type="button" variant="secondary" onClick={clearFilters}>
+                  Limpiar filtros
+                </Button>
+              )}
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50/80">
                 <tr>
@@ -329,16 +424,39 @@ export default function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((u) => (
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">
+                      {hasActiveFilters
+                        ? 'No hay usuarios que coincidan con la búsqueda o el rol seleccionado.'
+                        : 'No hay usuarios registrados.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredItems.map((u) => (
                   <tr
                     key={u.id_usuario}
                     className="border-b border-slate-100 transition hover:bg-slate-50/60"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-900">
-                        {u.nombres} {u.apellidos}
-                      </p>
-                      <p className="text-xs text-slate-500">{u.email}</p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-indigo-600 shadow-sm">
+                          <UserAvatar
+                            key={`${u.id_usuario}-${userPhotoVersion(u)}`}
+                            user={u}
+                            className="h-full w-full"
+                            textClassName="text-xs"
+                            photoUrl={photoUrls[u.id_usuario] ?? null}
+                            managedPhoto
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-900">
+                            {u.nombres} {u.apellidos}
+                          </p>
+                          <p className="text-xs text-slate-500">{u.email}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{u.nombre_rol}</td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">{u.numero_placa}</td>
@@ -416,10 +534,18 @@ export default function AdminUsersPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
-          </div>
+            </div>
+            {filteredItems.length > 0 && hasActiveFilters && (
+              <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
+                Mostrando {filteredItems.length} de {items.length} usuario
+                {items.length === 1 ? '' : 's'}
+              </p>
+            )}
+          </>
         )}
       </Card>
     </AdminGuard>

@@ -58,7 +58,7 @@ export default function Combobox({
           <ul
             id={listId}
             role="listbox"
-            className="absolute bottom-full z-50 mb-1 w-full overflow-y-auto rounded-2xl border border-slate-200/80 bg-white py-1 shadow-lg"
+            className="absolute top-full z-50 mt-1 w-full overflow-y-auto rounded-2xl border border-slate-200/80 bg-white py-1 shadow-lg"
             style={{ maxHeight: listMaxHeight }}
           >
             {options.map((opt) => {

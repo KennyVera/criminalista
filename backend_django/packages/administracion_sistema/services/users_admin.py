@@ -32,9 +32,25 @@ class UsersAdminService:
     def list_users(self) -> list[dict[str, Any]]:
         df = self._users_df()
         roles = self._roles_map()
+        prof_df = self.store.read_table("app_perfiles_usuario")
+        profile_meta: dict[int, dict[str, Any]] = {}
+        if not prof_df.empty:
+            for row in prof_df.to_dict(orient="records"):
+                uid = int(row["fk_usuario"])
+                foto_url = str(row.get("foto_url") or "").strip()
+                tiene_foto = bool(foto_url)
+                actualizado = row.get("actualizado_en")
+                profile_meta[uid] = {
+                    "tiene_foto": tiene_foto,
+                    "foto_actualizada_en": actualizado if tiene_foto else None,
+                }
         items = []
         for row in df.to_dict(orient="records"):
-            items.append(self._public(row, roles))
+            pub = self._public(row, roles)
+            meta = profile_meta.get(int(row["id_usuario"]), {})
+            pub["tiene_foto"] = bool(meta.get("tiene_foto"))
+            pub["foto_actualizada_en"] = meta.get("foto_actualizada_en")
+            items.append(pub)
         return items
 
     def get_user(self, user_id: int) -> dict[str, Any] | None:

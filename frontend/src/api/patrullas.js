@@ -11,6 +11,14 @@ const qs = (params = {}) => {
 export const patrullasApi = {
   catalogos: () => api.request(`${B}/patrullas/catalogos/`),
 
+  turnos: (params) => api.request(`${B}/turnos/${qs(params)}`),
+  asignarTurno: (body) =>
+    api.request(`${B}/turnos/`, { method: 'POST', body: JSON.stringify(body) }),
+  cerrarAsignacionTurno: (id) =>
+    api.request(`${B}/turnos/asignaciones/${id}/cerrar/`, { method: 'POST', body: '{}' }),
+
+  incidenteDetalle: (id) => api.request(`${B}/incidentes/${id}/`),
+
   // CU-O77 — Comisario
   oficialesDisponibles: () => api.request(`${B}/patrullas/oficiales-disponibles/`),
   listar: (params) => api.request(`${B}/patrullas/${qs(params)}`),

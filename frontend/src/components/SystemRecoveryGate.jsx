@@ -20,7 +20,7 @@ import AuditoriaPage from '../pages/AuditoriaPage'
 import PrediccionPage from '../pages/PrediccionPage'
 import ReportesPage from '../pages/ReportesPage'
 import PatrullasPage from '../pages/PatrullasPage'
-import DespachoPage from '../pages/DespachoPage'
+import TurnosOperativosPage from '../pages/TurnosOperativosPage'
 import MisPatrullasPage from '../pages/MisPatrullasPage'
 import AdminUsersPage from '../pages/admin/AdminUsersPage'
 import AdminPermissionsPage from '../pages/admin/AdminPermissionsPage'
@@ -30,6 +30,8 @@ import AdminBackupsPage from '../pages/admin/AdminBackupsPage'
 import AdminCrimeCatalogsPage from '../pages/admin/AdminCrimeCatalogsPage'
 import AdminZonesPage from '../pages/admin/AdminZonesPage'
 import AdminSystemStatusPage from '../pages/admin/AdminSystemStatusPage'
+import ProfilePage from '../pages/ProfilePage'
+import AdminGuard from './admin/AdminGuard'
 
 const POLL_MS = 20_000
 
@@ -48,18 +50,27 @@ function NormalAppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="tabla/:slug" element={<CollectionCrud />} />
-        <Route path="generar-datos" element={<GenerateDataPage />} />
+        <Route
+          path="generar-datos"
+          element={
+            <AdminGuard>
+              <GenerateDataPage />
+            </AdminGuard>
+          }
+        />
         <Route path="analitica/prediccion" element={<PrediccionPage />} />
         <Route path="reportes" element={<ReportesPage />} />
         <Route path="investigaciones/asignar" element={<AsignarDetectivePage />} />
         <Route path="investigaciones/progreso" element={<ProgresoInvestigacionPage />} />
         <Route path="operaciones/patrullas" element={<PatrullasPage />} />
+        <Route path="operaciones/turnos" element={<TurnosOperativosPage />} />
         <Route path="operaciones/despacho" element={<DespachoPage />} />
         <Route path="operaciones/mis-patrullas" element={<MisPatrullasPage />} />
         <Route path="expedientes" element={<ExpedientesListPage />} />
         <Route path="expedientes/:numeroCaso" element={<ExpedienteDetailPage />} />
         <Route path="seguridad/sesiones-activas" element={<ActiveSessionsPage />} />
         <Route path="seguridad/auditoria" element={<AuditoriaPage />} />
+        <Route path="perfil" element={<ProfilePage />} />
         <Route path="admin/usuarios" element={<AdminUsersPage />} />
         <Route path="admin/permisos" element={<AdminPermissionsPage />} />
         <Route path="admin/politicas" element={<AdminPoliciesPage />} />

@@ -12,10 +12,11 @@ from packages.autenticacion_seguridad.services.jwt_tokens import (
     decode_access_token,
     expiration_iso,
 )
-from packages.autenticacion_seguridad.services.passwords import verify_password
+from packages.autenticacion_seguridad.services.passwords import hash_password, verify_password
 from packages.autenticacion_seguridad.services.security_policy import (
     get_login_max_attempts,
     is_admin_2fa_required,
+    validate_password_strength,
 )
 from packages.autenticacion_seguridad.services.session_service import (
     MOTIVO_ADMIN,
@@ -562,9 +563,38 @@ class AuthService:
     def list_active_sessions(self) -> list[dict[str, Any]]:
         return self.sessions.list_active_sessions()
 
+    def change_password(
+        self,
+        user_id: int,
+        current_password: str,
+        new_password: str,
+        *,
+        ip: str | None = None,
+    ) -> dict[str, str]:
+        df = self._read_users()
+        mask = df["id_usuario"] == user_id
+        if not mask.any():
+            raise AuthError("Usuario no encontrado")
+        user = df.loc[mask].iloc[0].to_dict()
+        if not verify_password(str(current_password), str(user["password_hash"])):
+            raise AuthError("La contraseña actual no es correcta")
+        validate_password_strength(str(new_password))
+        if verify_password(str(new_password), str(user["password_hash"])):
+            raise AuthError("La nueva contraseña debe ser diferente a la actual")
+        df.loc[mask, "password_hash"] = hash_password(str(new_password))
+        self.store.write_table("app_usuarios", df)
+        self._audit(
+            fk_usuario=user_id,
+            accion="PASSWORD_CHANGED",
+            detalle=f"Contraseña actualizada: {user.get('email', '')}",
+            ip=ip,
+            tabla="app_usuarios",
+        )
+        return {"message": "Contraseña actualizada correctamente"}
+
     @staticmethod
     def _public_user(user: dict, nombre_rol: str) -> dict[str, Any]:
-        return {
+        base = {
             "id_usuario": int(user["id_usuario"]),
             "fk_rol": int(user["fk_rol"]),
             "nombre_rol": nombre_rol,
@@ -573,7 +603,18 @@ class AuthService:
             "apellidos": user["apellidos"],
             "email": user["email"],
             "estado_cuenta": user["estado_cuenta"],
+            "tiene_foto": False,
+            "telefono": "",
+            "biografia": "",
+            "foto_actualizada_en": None,
         }
+        try:
+            from packages.autenticacion_seguridad.services.profile_service import ProfileService
+
+            base.update(ProfileService().profile_extras(int(user["id_usuario"])))
+        except Exception:
+            pass
+        return base
 
     def _audit(
         self,

@@ -22,6 +22,7 @@ export function AuthProvider({ children }) {
     }
   })
   const [loading, setLoading] = useState(!!sessionStorage.getItem(TOKEN_KEY))
+  const [photoEpoch, setPhotoEpoch] = useState(0)
 
   const persist = useCallback((nextToken, nextUser) => {
     setToken(nextToken)
@@ -134,6 +135,14 @@ export function AuthProvider({ children }) {
 
   const resendMfa = useCallback((email) => api.authResendMfa(email), [])
 
+  const refreshUser = useCallback(async () => {
+    const data = await api.authMe()
+    setUser(data.user)
+    sessionStorage.setItem(USER_KEY, JSON.stringify(data.user))
+    setPhotoEpoch((n) => n + 1)
+    return data.user
+  }, [])
+
   const logout = useCallback(async () => {
     try {
       if (token) await api.authLogout()
@@ -153,8 +162,10 @@ export function AuthProvider({ children }) {
       verifyMfa,
       resendMfa,
       logout,
+      refreshUser,
+      photoEpoch,
     }),
-    [token, user, loading, login, verifyMfa, resendMfa, logout]
+    [token, user, loading, login, verifyMfa, resendMfa, logout, refreshUser, photoEpoch]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

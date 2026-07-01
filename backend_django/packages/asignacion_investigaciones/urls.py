@@ -1,10 +1,12 @@
 from django.urls import path
 
 from packages.asignacion_investigaciones.patrullas_views import (
+    AsignacionTurnoDetailView,
     DespacharView,
     IncidenteApoyoView,
     IncidenteAvanzarView,
     IncidenteCerrarView,
+    IncidenteDetailView,
     IncidenteDevolverView,
     IncidenteFinalizarView,
     IncidentesView,
@@ -14,6 +16,7 @@ from packages.asignacion_investigaciones.patrullas_views import (
     PatrullaCatalogosView,
     PatrullaOficialDetailView,
     PatrullasView,
+    TurnosView,
 )
 from packages.asignacion_investigaciones.views import (
     AsignarDetectiveView,
@@ -62,6 +65,7 @@ urlpatterns = [
         name="patrulla-oficial-detalle",
     ),
     path("incidentes/", IncidentesView.as_view(), name="incidentes"),
+    path("incidentes/<int:fk_incidente>/", IncidenteDetailView.as_view(), name="incidente-detalle"),
     path("incidentes/<int:fk_incidente>/despachar/", DespacharView.as_view(), name="incidente-despachar"),
     path("incidentes/<int:fk_incidente>/cerrar/", IncidenteCerrarView.as_view(), name="incidente-cerrar"),
     path("incidentes/<int:fk_incidente>/devolver/", IncidenteDevolverView.as_view(), name="incidente-devolver"),
@@ -69,4 +73,10 @@ urlpatterns = [
     path("incidentes/<int:fk_incidente>/finalizar/", IncidenteFinalizarView.as_view(), name="incidente-finalizar"),
     path("incidentes/<int:fk_incidente>/apoyo/", IncidenteApoyoView.as_view(), name="incidente-apoyo"),
     path("mis-patrullas/", MisPatrullasView.as_view(), name="mis-patrullas"),
+    path("turnos/", TurnosView.as_view(), name="turnos-operativos"),
+    path(
+        "turnos/asignaciones/<int:fk_asignacion>/cerrar/",
+        AsignacionTurnoDetailView.as_view(),
+        name="turno-asignacion-cerrar",
+    ),
 ]

@@ -53,7 +53,7 @@ export default function MisPatrullasPage() {
   const [busy, setBusy] = useState(null)
   const [form, setForm] = useState({
     tipo: 'Robo',
-    ubicacion: '',
+    direccion: '',
     descripcion: '',
     prioridad: 'Media',
     reportante: '',
@@ -83,15 +83,15 @@ export default function MisPatrullasPage() {
 
   const handleCreate = async (e) => {
     e.preventDefault()
-    if (!form.ubicacion.trim()) {
-      toast.error('Ubicación requerida', 'Indique dónde ocurre el incidente.')
+    if (!form.direccion.trim()) {
+      toast.error('Ubicación requerida', 'Indique la dirección del incidente.')
       return
     }
     setCreating(true)
     try {
       await patrullasApi.crearIncidente(form)
       toast.success('Incidente registrado', 'El comisario lo evaluará y despachará.')
-      setForm((f) => ({ ...f, ubicacion: '', descripcion: '', reportante: '' }))
+      setForm((f) => ({ ...f, direccion: '', descripcion: '', reportante: '' }))
       load()
     } catch (err) {
       toast.error('No se pudo registrar', err.message)
@@ -219,8 +219,8 @@ export default function MisPatrullasPage() {
               <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
                 Ubicación
                 <Input
-                  value={form.ubicacion}
-                  onChange={(e) => setForm((f) => ({ ...f, ubicacion: e.target.value }))}
+                  value={form.direccion}
+                  onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))}
                   className="mt-1.5"
                   placeholder="Ej. Av. Principal y Calle 5"
                 />

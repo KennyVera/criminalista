@@ -7,6 +7,12 @@ export const adminApi = {
   users: () => api.request(`${B}/usuarios/`),
   createUser: (body) => api.request(`${B}/usuarios/`, { method: 'POST', body: JSON.stringify(body) }),
   generatePlaca: (fkRol) => api.request(`${B}/usuarios/generar-placa/?fk_rol=${fkRol}`),
+  userFotoBlob: (id, version = '') =>
+    api.fetchBlob(
+      version
+        ? `${B}/usuarios/${id}/foto/?v=${encodeURIComponent(version)}`
+        : `${B}/usuarios/${id}/foto/`
+    ),
   getUser: (id) => api.request(`${B}/usuarios/${id}/`),
   updateUser: (id, body) =>
     api.request(`${B}/usuarios/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),

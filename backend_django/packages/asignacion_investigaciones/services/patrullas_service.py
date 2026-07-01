@@ -15,6 +15,9 @@ from typing import Any
 import pandas as pd
 
 from packages.autenticacion_seguridad.services.auth_service import AuthService
+from packages.asignacion_investigaciones.services.operaciones_registro_service import (
+    OperacionesRegistroService,
+)
 from packages.shared.minio_transactional import TransactionalMinioStore, utc_now_iso
 
 FK_ROL_OFICIAL = 4
@@ -64,6 +67,30 @@ class PatrullaService:
     def __init__(self) -> None:
         self.tx = TransactionalMinioStore()
         self.tx.ensure_tables()
+        self.registro = OperacionesRegistroService()
+
+    def _set_incidente_estado(
+        self,
+        df: pd.DataFrame,
+        mask: Any,
+        nuevo_estado: str,
+        *,
+        actor: dict[str, Any] | None = None,
+        comentario: str = "",
+    ) -> tuple[str, str]:
+        incidente = df[mask].iloc[0].to_dict()
+        estado_ant = str(incidente.get("estado") or "")
+        est = self.registro.resolve_estado(nuevo_estado)
+        df.loc[mask, "estado"] = est["nombre"]
+        df.loc[mask, "fk_estado_incidente"] = int(est["id_estado"])
+        self.registro.registrar_cambio_estado(
+            fk_incidente=int(incidente["id_incidente"]),
+            estado_anterior=estado_ant,
+            estado_nuevo=est["nombre"],
+            actor=actor,
+            comentario=comentario,
+        )
+        return estado_ant, str(est["nombre"])
 
     # ── Helpers ────────────────────────────────────────────────────────
     def _users_df(self) -> pd.DataFrame:
@@ -146,18 +173,25 @@ class PatrullaService:
         comisario: dict[str, Any],
         sector: str,
         turno: str,
+        fk_turno: int | None = None,
         notas: str = "",
     ) -> dict[str, Any]:
         if not str(sector).strip():
             raise ValueError("El sector es obligatorio.")
-        if not str(turno).strip():
+        turno_nombre = str(turno).strip()
+        if fk_turno:
+            trow = self.registro.get_turno(int(fk_turno))
+            if trow:
+                turno_nombre = str(trow.get("nombre") or turno_nombre)
+        if not turno_nombre:
             raise ValueError("El turno es obligatorio.")
         df = self.tx.read_table("app_patrullas")
         now = utc_now_iso()
         row = {
             "codigo": self._next_codigo(df),
             "sector": str(sector).strip(),
-            "turno": str(turno).strip(),
+            "turno": turno_nombre,
+            "fk_turno": int(fk_turno) if fk_turno else None,
             "estado": "Disponible",
             "fk_comisario": int(comisario["id_usuario"]),
             "comisario_nombre": self._persona(comisario),
@@ -292,10 +326,23 @@ class PatrullaService:
             return []
         if estado:
             df = df[df["estado"].astype(str) == estado]
-        return [
-            _json_safe(r)
-            for r in df.sort_values("id_incidente", ascending=False).to_dict(orient="records")
-        ]
+        items = []
+        for row in df.sort_values("id_incidente", ascending=False).to_dict(orient="records"):
+            item = _json_safe(row)
+            fk_u = item.get("fk_ubicacion")
+            if fk_u:
+                ubic = self.registro.get_ubicacion(int(fk_u))
+                if ubic:
+                    item["ubicacion_detalle"] = ubic
+            items.append(item)
+        return items
+
+    def get_incidente(self, fk_incidente: int) -> dict[str, Any] | None:
+        df = self.tx.read_table("app_incidentes")
+        hit = df[df["id_incidente"].astype(int) == int(fk_incidente)]
+        if hit.empty:
+            return None
+        return self.registro.enrich_incidente(hit.iloc[0].to_dict())
 
     def create_incidente(
         self,
@@ -303,24 +350,63 @@ class PatrullaService:
         operador: dict[str, Any],
         tipo: str,
         descripcion: str,
-        ubicacion: str,
+        ubicacion: str = "",
+        direccion: str = "",
+        barrio: str = "",
+        fk_distrito: int | None = None,
+        latitud: str = "",
+        longitud: str = "",
         prioridad: str = "Media",
         reportante: str = "",
+        fk_tipo_incidente: int | None = None,
+        fk_prioridad_incidente: int | None = None,
     ) -> dict[str, Any]:
-        if not str(ubicacion).strip():
+        dir_final = str(direccion or ubicacion or "").strip()
+        if not dir_final:
             raise ValueError("La ubicación del incidente es obligatoria.")
-        tipo = str(tipo).strip() or "Otro"
-        if prioridad not in PRIORIDADES:
-            prioridad = "Media"
+
+        if fk_tipo_incidente:
+            tipos = {int(t["id_tipo"]): t for t in self.registro.list_tipos()}
+            tipo_row = tipos.get(int(fk_tipo_incidente))
+            if not tipo_row:
+                raise ValueError("Tipo de incidente no válido.")
+        else:
+            tipo_row = self.registro.resolve_tipo(tipo)
+
+        if fk_prioridad_incidente:
+            prios = {int(p["id_prioridad"]): p for p in self.registro.list_prioridades()}
+            prio_row = prios.get(int(fk_prioridad_incidente))
+            if not prio_row:
+                raise ValueError("Prioridad no válida.")
+        else:
+            prio_row = self.registro.resolve_prioridad(prioridad)
+
+        ubic = self.registro.create_ubicacion(
+            direccion=dir_final,
+            barrio=barrio,
+            fk_distrito=fk_distrito,
+            latitud=latitud,
+            longitud=longitud,
+        )
+        ubic_text = self.registro.ubicacion_resumen(ubic)
+
+        estado_row = self.registro.resolve_estado("Reportado")
+        turno_row = self.registro.turno_activo_para_fecha()
+
         df = self.tx.read_table("app_incidentes")
         now = utc_now_iso()
         row = {
             "codigo": self._next_incidente_codigo(df),
-            "tipo": tipo,
+            "tipo": str(tipo_row.get("nombre") or "Otro"),
+            "fk_tipo_incidente": int(tipo_row["id_tipo"]),
             "descripcion": str(descripcion or "").strip(),
-            "ubicacion": str(ubicacion).strip(),
-            "prioridad": prioridad,
-            "estado": "Reportado",
+            "ubicacion": ubic_text,
+            "fk_ubicacion": int(ubic["id_ubicacion"]),
+            "prioridad": str(prio_row.get("nombre") or "Media"),
+            "fk_prioridad_incidente": int(prio_row["id_prioridad"]),
+            "estado": str(estado_row.get("nombre") or "Reportado"),
+            "fk_estado_incidente": int(estado_row["id_estado"]),
+            "fk_turno_operativo": int(turno_row["id_turno"]) if turno_row else None,
             "reportante": str(reportante or "").strip(),
             "fk_patrulla": None,
             "patrulla_codigo": "",
@@ -342,6 +428,13 @@ class PatrullaService:
             "fecha_vinculacion": "",
         }
         created = self.tx.append_row("app_incidentes", row)
+        self.registro.registrar_cambio_estado(
+            fk_incidente=int(created["id_incidente"]),
+            estado_anterior="",
+            estado_nuevo=str(estado_row.get("nombre") or "Reportado"),
+            actor=operador,
+            comentario="Incidente registrado",
+        )
         return _json_safe(created)
 
     def dispatch(
@@ -381,9 +474,13 @@ class PatrullaService:
         now = utc_now_iso()
         antes = {"incidente_estado": incidente.get("estado"), "patrulla_estado": patrulla.get("estado")}
 
-        inc_df.loc[imask, "estado"] = "Despachado"
-        if prioridad in PRIORIDADES:
-            inc_df.loc[imask, "prioridad"] = prioridad
+        estado_ant, estado_new = self._set_incidente_estado(
+            inc_df, imask, "Despachado", actor=comisario, comentario="Patrulla despachada"
+        )
+        if prioridad:
+            prio_row = self.registro.resolve_prioridad(prioridad)
+            inc_df.loc[imask, "prioridad"] = prio_row["nombre"]
+            inc_df.loc[imask, "fk_prioridad_incidente"] = int(prio_row["id_prioridad"])
         inc_df.loc[imask, "fk_patrulla"] = int(fk_patrulla)
         inc_df.loc[imask, "patrulla_codigo"] = str(patrulla.get("codigo"))
         inc_df.loc[imask, "fk_comisario"] = int(comisario["id_usuario"])
@@ -394,7 +491,7 @@ class PatrullaService:
 
         self.set_patrulla_estado(int(fk_patrulla), "Despachada")
 
-        despues = {"incidente_estado": "Despachado", "patrulla_estado": "Despachada"}
+        despues = {"incidente_estado": estado_new, "patrulla_estado": "Despachada"}
         return {
             "incidente": _json_safe(inc_df[imask].iloc[0].to_dict()),
             "antes": antes,
@@ -530,7 +627,13 @@ class PatrullaService:
         nuevo_estado_inc, nuevo_estado_pat = self._RECEPTOR_TRANSICIONES[estado_actual]
 
         antes = {"incidente_estado": estado_actual, "patrulla_estado": self._patrulla_row(fk_patrulla).get("estado")}
-        df.loc[mask, "estado"] = nuevo_estado_inc
+        _, nuevo_estado_inc = self._set_incidente_estado(
+            df,
+            mask,
+            nuevo_estado_inc,
+            actor=oficial,
+            comentario=nota or f"Avance a {nuevo_estado_inc}",
+        )
         if nota:
             df.loc[mask, "notas_despacho"] = self._append_nota(incidente, oficial, nota)
         self.tx.write_table("app_incidentes", df)
@@ -562,7 +665,9 @@ class PatrullaService:
 
         now = utc_now_iso()
         antes = {"incidente_estado": "En atención"}
-        df.loc[mask, "estado"] = "Atendido"
+        _, estado_new = self._set_incidente_estado(
+            df, mask, "Atendido", actor=oficial, comentario="Atención finalizada"
+        )
         df.loc[mask, "resultado_atencion"] = str(resultado).strip()
         df.loc[mask, "parte_policial"] = str(parte or "").strip() or self._parte_template(incidente, resultado, oficial)
         df.loc[mask, "fecha_atendido"] = now
@@ -572,7 +677,7 @@ class PatrullaService:
         return {
             "incidente": _json_safe(df[mask].iloc[0].to_dict()),
             "antes": antes,
-            "despues": {"incidente_estado": "Atendido"},
+            "despues": {"incidente_estado": estado_new},
         }
 
     def solicitar_apoyo(
@@ -611,7 +716,9 @@ class PatrullaService:
 
         now = utc_now_iso()
         antes = {"incidente_estado": "Atendido"}
-        df.loc[mask, "estado"] = "Cerrado"
+        _, estado_new = self._set_incidente_estado(
+            df, mask, "Cerrado", actor=comisario, comentario="Cierre aprobado por comisario"
+        )
         df.loc[mask, "fecha_cierre"] = now
         self.tx.write_table("app_incidentes", df)
 
@@ -624,7 +731,7 @@ class PatrullaService:
         return {
             "incidente": _json_safe(df[mask].iloc[0].to_dict()),
             "antes": antes,
-            "despues": {"incidente_estado": "Cerrado", "patrulla_estado": "Disponible"},
+            "despues": {"incidente_estado": estado_new, "patrulla_estado": "Disponible"},
         }
 
     def devolver_incidente(
@@ -646,7 +753,13 @@ class PatrullaService:
             raise ValueError("Solo se puede devolver un incidente en estado «Atendido».")
 
         antes = {"incidente_estado": "Atendido"}
-        df.loc[mask, "estado"] = "En atención"
+        _, estado_new = self._set_incidente_estado(
+            df,
+            mask,
+            "En atención",
+            actor=comisario,
+            comentario=f"Devuelto: {motivo}",
+        )
         df.loc[mask, "motivo_devolucion"] = str(motivo).strip()
         df.loc[mask, "notas_despacho"] = self._append_nota(
             incidente, comisario, f"DEVUELTO PARA CORRECCIÓN: {motivo}"
@@ -655,7 +768,7 @@ class PatrullaService:
         return {
             "incidente": _json_safe(df[mask].iloc[0].to_dict()),
             "antes": antes,
-            "despues": {"incidente_estado": "En atención"},
+            "despues": {"incidente_estado": estado_new},
         }
 
     @staticmethod

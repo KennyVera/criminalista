@@ -23,6 +23,7 @@ import {
   FolderOpen,
   Radio,
   Navigation,
+  CalendarClock,
 } from 'lucide-react'
 import GenerateDataButton from './GenerateDataButton'
 import BrandLogo from './layout/BrandLogo'
@@ -187,6 +188,14 @@ export default function Sidebar({
           >
             {showPatrullas && (
               <li>
+                <NavLink to="/operaciones/turnos" className={linkClass}>
+                  <CalendarClock className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {!collapsed && <span className="truncate">Turnos operativos</span>}
+                </NavLink>
+              </li>
+            )}
+            {showPatrullas && (
+              <li>
                 <NavLink to="/operaciones/patrullas" className={linkClass}>
                   <ShieldCheck className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
                   {!collapsed && <span className="truncate">Patrullas</span>}
@@ -341,7 +350,7 @@ export default function Sidebar({
           </>
         )}
 
-        <GenerateDataButton collapsed={collapsed} />
+        {isAdmin && <GenerateDataButton collapsed={collapsed} />}
       </nav>
 
       <div className="sidebar-divider" />
